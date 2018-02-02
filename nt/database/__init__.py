@@ -71,6 +71,7 @@ from nt import kaldi
 from nt.database import keys
 from nt.io import load_json
 from nt.io.audioread import audioread
+from nt.database.iterator import BaseIterator
 
 LOG = logging.getLogger('Database')
 
@@ -100,39 +101,36 @@ class DictDatabase:
 
     @property
     def datasets_eval(self):
-        """A list of filelist names for development."""
+        """A list of filelist names for evaluation."""
         raise NotImplementedError
 
     @property
     def datasets_test(self):
-        """A list of filelist names for evaluation."""
+        """A list of filelist names for testing."""
         raise NotImplementedError
 
-    def get_iterator_by_names(self, dataset_names, prepend_dataset_name=False):
+    def get_iterator_by_names(self, dataset_names):
         """
         Returns a single Iterator over specified datasets.
+
+        Adds the example_id and dataset_name to each example dict.
+
         :param dataset_names: list or str specifying the datasets of interest.
             If None an iterator over the complete databases will be returned.
         :return:
         """
-        examples = dict()
-        expected_length = 0
         dataset_names = to_list(dataset_names)
+        iterators = list()
         for dataset_name in dataset_names:
-            prefix = dataset_name + '_' if prepend_dataset_name else ''
-            new_examples = {
-                prefix + k: ex for k, ex in
-                self.database_dict[keys.DATASETS][dataset_name].items()
-            }
-            expected_length += len(new_examples)
-            examples.update(new_examples)
-            assert expected_length == len(examples)
+            examples = self.database_dict[keys.DATASETS][dataset_name]
 
-            # Why not ConcatIterator?
-        if len(dataset_names) == 1:
-            return ExamplesIterator(examples, name=dataset_names[0])
-        else:
-            return ExamplesIterator(examples)
+            for example_id in examples.keys():
+                examples[example_id][keys.EXAMPLE_ID] = example_id
+                examples[example_id][keys.DATASET_NAME] = dataset_name
+
+            iterators.append(ExamplesIterator(examples, name=dataset_name))
+
+        return BaseIterator.concatenate(*iterators)
 
     def get_lengths(self, datasets, length_transform_fn=lambda x: x):
         raise NotImplementedError
@@ -150,12 +148,12 @@ class DictDatabase:
             return []
 
     @property
-    def audio_read_fn(self):
+    def read_fn(self):
         return lambda x: audioread(x)[0]
 
 
 class JsonDatabase(DictDatabase):
-    def __init__(self, json_path: Path):
+    def __init__(self, json_path: [str, Path]):
         """
 
         :param json_path: path to database JSON
@@ -231,8 +229,8 @@ class KaldiDatabase(DictDatabase):
             keys.AUDIO_DATA in example
             and keys.OBSERVATION in example[keys.AUDIO_DATA]
         ), (
-            'No audio data found in example. Make sure to mak `AudioReader`'
-            'before adding `num_samples`.'
+            'No audio data found in example. Make sure to map with '
+            '`AudioReader` before adding `num_samples`.'
         )
         example[keys.NUM_SAMPLES] \
             = example[keys.AUDIO_DATA][keys.OBSERVATION].shape[-1]
