@@ -140,7 +140,11 @@ class DictDatabase:
         """A list of filelist names for testing."""
         raise NotImplementedError
 
-    def get_iterator_by_names(self, dataset_names):
+    @cached_property
+    def _iterator_weak_ref_dict(self):
+        return weakref.WeakValueDictionary()
+
+    def get_iterator_by_names(self, dataset_names, use_weakref=True):
         """
         Returns a single Iterator over specified datasets.
 
@@ -150,9 +154,17 @@ class DictDatabase:
             If None an iterator over the complete databases will be returned.
         :return:
         """
-        dataset_names = to_list(dataset_names)
+        dataset_names = to_list(dataset_names, item_type=str)
         iterators = list()
         for dataset_name in dataset_names:
+            if use_weakref:
+                try:
+                    it = self._iterator_weak_ref_dict[dataset_name]
+                except KeyError:
+                    pass
+                else:
+                    iterators.append(it)
+                    continue
             try:
                 examples = self.database_dict[keys.DATASETS][dataset_name]
             except KeyError:
@@ -175,6 +187,10 @@ class DictDatabase:
             it = ExamplesIterator(examples, name=dataset_name)
             # Apply map function to restore binary data
             it = it.map(pickle.loads)
+
+            if use_weakref:
+                self._iterator_weak_ref_dict[dataset_name] = it
+
             iterators.append(it)
 
         return BaseIterator.concatenate(*iterators)
