@@ -73,7 +73,7 @@ from nt import kaldi
 from nt.io import load_json
 from nt.io.audioread import audioread
 
-from nt.database import keys
+from nt.database.keys import *
 from nt.database.iterator import BaseIterator
 from nt.database.iterator import ExamplesIterator
 
@@ -123,7 +123,7 @@ class DictDatabase:
 
     @property
     def dataset_names(self):
-        return list(self.database_dict[keys.DATASETS].keys())
+        return list(self.database_dict[DATASETS].keys())
 
     @property
     def datasets_train(self):
@@ -166,12 +166,12 @@ class DictDatabase:
                     iterators.append(it)
                     continue
             try:
-                examples = self.database_dict[keys.DATASETS][dataset_name]
+                examples = self.database_dict[DATASETS][dataset_name]
             except KeyError:
                 import difflib
                 similar = difflib.get_close_matches(
                     dataset_name,
-                    self.database_dict[keys.DATASETS].keys(),
+                    self.database_dict[DATASETS].keys(),
                     n=5,
                     cutoff=0,
                 )
@@ -184,8 +184,8 @@ class DictDatabase:
                 )
 
             for example_id in examples.keys():
-                examples[example_id][keys.EXAMPLE_ID] = example_id
-                examples[example_id][keys.DATASET_NAME] = dataset_name
+                examples[example_id][EXAMPLE_ID] = example_id
+                examples[example_id][DATASET_NAME] = dataset_name
 
             # Convert values to binary, because deepcopy on binary is faster
             # This is important for CHiME5
@@ -243,10 +243,10 @@ class JsonDatabase(DictDatabase):
         it = self.get_iterator_by_names(datasets)
         lengths = dict()
         for example in it:
-            num_samples = example[keys.NUM_SAMPLES]
+            num_samples = example[NUM_SAMPLES]
             if isinstance(num_samples, dict):
-                num_samples = num_samples[keys.OBSERVATION]
-            example_id = example[keys.EXAMPLE_ID]
+                num_samples = num_samples[OBSERVATION]
+            example_id = example[EXAMPLE_ID]
             lengths[example_id] = (length_transform_fn(num_samples))
         return lengths
 
@@ -255,7 +255,24 @@ class JsonDatabase(DictDatabase):
 
 
 class KaldiDatabase(DictDatabase):
+    """
+    Which files are expected from directory to be a Kaldi database?
+    - data
+        - filst1
+            - wav.scp with format: <utterance_id> <audio_path>
+            - utt2spk with format: <utterance_id> <speaker_id>
+            - text <utterance_id> with format: <kaldi_word_transcription>
+            - spk2gender (optional)
+        - flist2
+            - wav.scp
+            - utt2spk
+            - text
+            - spk2gender (optional)
 
+    The `wav.scp` should ideally be in this format:
+        utt_id1 audio_path1
+        utt_id2 audio_path2
+    """
     def __init__(self, egs_path: Path):
         if isinstance(egs_path, str):
             egs_path = Path(egs_path)
@@ -277,7 +294,7 @@ class KaldiDatabase(DictDatabase):
         examples = dict()
 
         # Normally the scp points to a single audio file (i.e. len(s) = 1)
-        # For databases with a different audio formart (e.g. WSJ) however,
+        # For databases with a different audio format (e.g. WSJ) however,
         # it is a command to convert the corresponding audio file. The
         # file is usually at the end of this command. If this does not work,
         # additional heuristics need to be introduced here.
@@ -289,24 +306,24 @@ class KaldiDatabase(DictDatabase):
 
         for example_id in scp:
             example = defaultdict(dict)
-            example[keys.AUDIO_PATH][keys.OBSERVATION] = _audio_path(scp[example_id])
-            example[keys.SPEAKER_ID] = utt2spk[example_id][0]
+            example[AUDIO_PATH][OBSERVATION] = _audio_path(scp[example_id])
+            example[SPEAKER_ID] = utt2spk[example_id][0]
             if spk2gender is not None:
-                example[keys.GENDER] = spk2gender[example[keys.SPEAKER_ID]][0]
-            example[keys.KALDI_TRANSCRIPTION] = ' '.join(text[example_id])
+                example[GENDER] = spk2gender[example[SPEAKER_ID]][0]
+            example[KALDI_TRANSCRIPTION] = ' '.join(text[example_id])
             examples[example_id] = dict(**example)
         return examples
 
     def add_num_samples(self, example):
         assert (
-            keys.AUDIO_DATA in example
-            and keys.OBSERVATION in example[keys.AUDIO_DATA]
+            AUDIO_DATA in example
+            and OBSERVATION in example[AUDIO_DATA]
         ), (
             'No audio data found in example. Make sure to map with '
             '`AudioReader` before adding `num_samples`.'
         )
-        example[keys.NUM_SAMPLES] \
-            = example[keys.AUDIO_DATA][keys.OBSERVATION].shape[-1]
+        example[NUM_SAMPLES] \
+            = example[AUDIO_DATA][OBSERVATION].shape[-1]
         return example
 
     @classmethod
@@ -386,7 +403,7 @@ class HybridASRDatabaseTemplate:
 
     @property
     def example_id_map_fn(self):
-        return lambda x: x[keys.EXAMPLE_ID]
+        return lambda x: x[EXAMPLE_ID]
 
     @property
     def decode_fst(self):
@@ -474,13 +491,13 @@ class HybridASRDatabaseTemplate:
         with open(filename, 'w') as fid:
             for example in iterator:
                 fid.write(
-                    f'{example[keys.EXAMPLE_ID]} '
-                    f'{example[keys.KALDI_TRANSCRIPTION]}\n'
+                    f'{example[EXAMPLE_ID]} '
+                    f'{example[KALDI_TRANSCRIPTION]}\n'
                 )
 
     def utterances_for_dataset(self, dataset):
         iterator = self.get_iterator_by_names(dataset)
-        return [ex[keys.EXAMPLE_ID] for ex in iterator]
+        return [ex[EXAMPLE_ID] for ex in iterator]
 
     @cached_property
     def state_alignment(self):
@@ -518,7 +535,7 @@ class HybridASRDatabaseTemplate:
 
     @property
     def asr_observation_key(self):
-        return keys.OBSERVATION
+        return OBSERVATION
 
     def build_select_channels_map_fn(self, channels):
         def select_channels(example):
