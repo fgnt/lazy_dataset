@@ -261,7 +261,7 @@ class KaldiDatabase(DictDatabase):
         - filst1
             - wav.scp with format: <utterance_id> <audio_path>
             - utt2spk with format: <utterance_id> <speaker_id>
-            - text <utterance_id> with format: <kaldi_word_transcription>
+            - text with format: <utterance_id> <kaldi_word_transcription>
             - spk2gender (optional)
         - flist2
             - wav.scp
