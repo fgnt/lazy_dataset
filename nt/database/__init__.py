@@ -263,20 +263,20 @@ class KaldiDatabase(DictDatabase):
             - utt2spk with format: <utterance_id> <speaker_id>
             - text with format: <utterance_id> <kaldi_word_transcription>
             - spk2gender (optional)
+            - utt2dur (optional, useful for correct bucketing)
         - flist2
             - wav.scp
             - utt2spk
             - text
             - spk2gender (optional)
+            - utt2dur (optional, useful for correct bucketing)
 
     The `wav.scp` should ideally be in this format:
         utt_id1 audio_path1
         utt_id2 audio_path2
     """
     def __init__(self, egs_path: Path):
-        if isinstance(egs_path, str):
-            egs_path = Path(egs_path)
-        self._egs_path = egs_path
+        self._egs_path = Path(egs_path)
         super().__init__(self.get_dataset_dict_from_kaldi(egs_path))
 
     def __repr__(self):
@@ -284,11 +284,14 @@ class KaldiDatabase(DictDatabase):
 
     @staticmethod
     def get_examples_from_dataset(dataset_path):
+        dataset_path = Path(dataset_path)
         scp = kaldi.io.read_keyed_text_file(dataset_path / 'wav.scp')
         utt2spk = kaldi.io.read_keyed_text_file(dataset_path / 'utt2spk')
         text = kaldi.io.read_keyed_text_file(dataset_path / 'text')
         try:
-            spk2gender = kaldi.io.read_keyed_text_file(dataset_path / 'spk2gender')
+            spk2gender = kaldi.io.read_keyed_text_file(
+                dataset_path / 'spk2gender'
+            )
         except FileNotFoundError:
             spk2gender = None
         examples = dict()
@@ -328,6 +331,7 @@ class KaldiDatabase(DictDatabase):
 
     @classmethod
     def get_dataset_dict_from_kaldi(cls, egs_path):
+        egs_path = Path(egs_path)
         scp_paths = glob.glob(str(egs_path / 'data' / '*' / 'wav.scp'))
         dataset_dict = {'datasets': {}}
         for wav_scp_file in scp_paths:
@@ -336,6 +340,32 @@ class KaldiDatabase(DictDatabase):
             examples = cls.get_examples_from_dataset(dataset_path)
             dataset_dict['datasets'][dataset_name] = examples
         return dataset_dict
+
+    def get_lengths(self, datasets, length_transform_fn=None):
+        if not callable(length_transform_fn):
+            raise NotImplementedError(
+                'Implement a `length_transform_fn` which translates from '
+                'seconds (due to Kaldi) to your desired lengths. You can do so '
+                'by implementing `get_lengths() in your subclass and take care '
+                'of the correct sample rate. It can not be implemented here, '
+                'since the sample rate is not known.'
+            )
+
+        if not isinstance(datasets, (tuple, list)):
+            datasets = [datasets]
+        lengths = dict()
+        for dataset in datasets:
+            utt2dur_path = self._egs_path / 'data' / dataset / 'utt2dur'
+            if not utt2dur_path.is_file():
+                raise NotImplementedError(
+                    'Lengths only available for bucketing if utt2dur file '
+                    f'exists: {utt2dur_path}'
+                )
+            lengths.update(
+                kaldi.io.read_keyed_text_file(utt2dur_path, to_list=False)
+            )
+
+        return {k: length_transform_fn(float(v)) for k, v in lengths.items()}
 
 
 class HybridASRDatabaseTemplate:
