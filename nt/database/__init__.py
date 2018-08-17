@@ -140,6 +140,22 @@ class DictDatabase:
         """A list of filelist names for testing."""
         raise NotImplementedError
 
+    def _get_dataset_from_database_dict(self, dataset_name):
+        if dataset_name in self.database_dict.get('alias', []):
+            dataset_names = self.database_dict['alias'][dataset_name]
+            examples = {}
+            for name in dataset_names:
+                examples_new = self.database_dict[DATASETS][name]
+                intersection = set.intersection(
+                    set(examples.keys()),
+                    set(examples_new.keys()),
+                )
+                assert len(intersection) == 0, intersection
+                examples = {**examples, **examples_new}
+            return examples
+        else:
+            return self.database_dict[DATASETS][dataset_name]
+
     @cached_property
     def _iterator_weak_ref_dict(self):
         return weakref.WeakValueDictionary()
@@ -166,12 +182,12 @@ class DictDatabase:
                     iterators.append(it)
                     continue
             try:
-                examples = self.database_dict[DATASETS][dataset_name]
+                examples = self._get_dataset_from_database_dict(dataset_name)
             except KeyError:
                 import difflib
                 similar = difflib.get_close_matches(
                     dataset_name,
-                    self.database_dict[DATASETS].keys(),
+                    self.dataset_names,
                     n=5,
                     cutoff=0,
                 )
