@@ -144,6 +144,22 @@ class DictDatabase:
         """A list of filelist names for testing."""
         raise NotImplementedError
 
+    @cached_property
+    def datasets(self):
+        dataset_names = self.dataset_names
+        return type(
+            'DatasetsCollection',
+            (object,),
+            {
+                # 'abc': property(lambda self: 'cdf'),
+                '__getitem__': (lambda _, dataset_name: self.get_iterator_by_names(dataset_name)),
+                **{
+                    k: property(lambda self: self[k])
+                    for k in dataset_names
+                }
+            }
+        )()
+
     def _get_dataset_from_database_dict(self, dataset_name):
         if dataset_name in self.database_dict.get('alias', []):
             dataset_names = self.database_dict['alias'][dataset_name]
