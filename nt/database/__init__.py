@@ -123,7 +123,11 @@ class DictDatabase:
 
     @property
     def dataset_names(self):
-        return list(self.database_dict[DATASETS].keys())
+        return tuple(
+            self.database_dict[DATASETS].keys()
+        ) + tuple(
+            self.database_dict.get('alias', {}).keys()
+        )
 
     @property
     def datasets_train(self):
