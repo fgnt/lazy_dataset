@@ -126,7 +126,7 @@ class DictDatabase:
         return tuple(
             self.database_dict[DATASETS].keys()
         ) + tuple(
-            self.database_dict.get('alias', {}).keys()
+            self.database_dict.get(ALIAS, {}).keys()
         )
 
     @property
