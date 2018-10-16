@@ -67,6 +67,8 @@ import collections
 from copy import deepcopy
 from pathlib import Path
 import itertools
+import concurrent.futures
+import random as rnd
 
 import numpy as np
 
@@ -140,11 +142,13 @@ class BaseIterator:
             f"Use 'key in {self.__class__}.keys()' "
             f"instead of 'key in {self.__class__}'")
 
-    def map(self, map_fn):
+    def map(self, map_fn, num_workers=0, buffer_size=100):
         """
         :param map_fn: function to transform an example dict. Takes an example
             dict as provided by this iterator and returns a transformed
             example dict, e.g. read and adss the observed audio signals.
+        :param num_workers:
+        :param buffer_size:
         :return: MapIterator returning mapped examples. This can e.g. be
         used to read and add audio to the example dict (see read_audio method).
 
@@ -153,6 +157,9 @@ class BaseIterator:
             The ExampleIterator makes a deepcopy of each example and prevents a
             modification of the root example.
         """
+        if num_workers > 0:
+            return ParMapIterator(
+                map_fn, self, num_workers=num_workers, buffer_size=buffer_size)
         return MapIterator(map_fn, self)
 
     def filter(self, filter_fn, lazy=True):
@@ -249,16 +256,21 @@ class BaseIterator:
         """
         return ZipIterator(self, *others)
 
-    def shuffle(self, reshuffle=False, rng=None):
+    def shuffle(self, reshuffle=False, rng=None, buffer_size=None):
         """
         Shuffle this iterator.
         :param reshuffle:
             If True, shuffle on each iteration, but disable indexing.
             If False, single shuffle, but support indexing.
-        param rng:
+        :param rng:
+        :param buffer_size:
         :return:
         """
         # Should reshuffle default be True or False
+        if buffer_size is not None:
+            assert reshuffle is True, 'LocalShuffleIterator only supports reshuffle'
+            assert rng is None, 'LocalShuffleIterator does not support seeds.'
+            return LocalShuffleIterator(self, buffer_size=buffer_size)
         if reshuffle is True:
             assert rng is None, 'ReShuffleIterator does not support seeds.'
             return ReShuffleIterator(self)
@@ -313,6 +325,13 @@ class BaseIterator:
             )
         slices = np.array_split(np.arange(len(self)), sections)
         return [self[list(s)] for s in slices]
+
+    def fragment(self, fragment_fn):
+        """
+        Fragments each example into multiple new examples.
+        E.g. use channels as single examples or split each example into segments
+        """
+        return FragmentIterator(fragment_fn, self)
 
     def sort(self, key_fn, sort_fn=sorted):
         """
@@ -500,6 +519,27 @@ class MapIterator(BaseIterator):
             return super().__getitem__(item)
 
 
+class ParMapIterator(MapIterator):
+    def __init__(
+            self, map_function, input_iterator,
+            num_workers=1, buffer_size=1000
+    ):
+        super().__init__(map_function, input_iterator)
+        assert num_workers >= 1
+        self.num_workers = num_workers
+        self.buffer_size = buffer_size
+
+    def __iter__(self):
+        with concurrent.futures.ProcessPoolExecutor(self.num_workers) as ex:
+            buffer = list()
+            for element in self.input_iterator:
+                buffer.append(ex.submit(self.map_function, element))
+                if len(buffer) >= self.buffer_size:
+                    yield buffer.pop(0).result()
+            while buffer:
+                yield buffer.pop(0).result()
+
+
 class ShuffleIterator(BaseIterator):
     """
     Iterator that shuffles the input_iterator. Assumes, that the input_iterator
@@ -579,6 +619,50 @@ class ReShuffleIterator(BaseIterator):
         np.random.shuffle(self.permutation)
         for idx in self.permutation:
             yield self.input_iterator[idx]
+
+    def __getitem__(self, item):
+        if isinstance(item, str):
+            return self.input_iterator[item]
+        elif isinstance(item, (numbers.Integral, slice, tuple, list)):
+            raise TypeError(
+                f'{self.__class__.__name__} does not support '
+                f'integers and slices as argument of __getitem__.'
+                f'Got argument "{item}" of type {type(item)}.'
+            )
+        else:
+            return super().__getitem__(item)
+
+
+class LocalShuffleIterator(BaseIterator):
+    """
+    Iterator that shuffles the input_iterator locally by randomly sampling from
+    a fixed length buffer. Hence also applicable to Iterators that does not
+    support indexing
+    Note:
+        This Iterator reshuffles each iteration, but does not support indexing.
+    """
+
+    def __init__(self, input_iterator, buffer_size=100):
+        self.input_iterator = input_iterator
+        self.buffer_size = buffer_size
+
+    def __len__(self):
+        return len(self.input_iterator)
+
+    def __iter__(self):
+        buffer = list()
+        print(f'Filling Shuffle Buffer with {self.buffer_size} samples.')
+        buffer_filled = False
+        for element in self.input_iterator:
+            buffer.append(element)
+            if len(buffer) >= self.buffer_size:
+                if not buffer_filled:
+                    print('Shuffle Buffer filled.')
+                    buffer_filled = True
+                yield buffer.pop(int(np.random.choice(self.buffer_size)))
+        rnd.shuffle(buffer)
+        for element in buffer:
+            yield element
 
     def __getitem__(self, item):
         if isinstance(item, str):
@@ -869,6 +953,21 @@ class MixIterator(BaseIterator):
 
     def __iter__(self):
         raise NotImplementedError
+
+
+class FragmentIterator(BaseIterator):
+    """
+    Fragments each example from an input_iterator into multiple new examples.
+    E.g. use channels as single examples or split each example into segments
+    """
+    def __init__(self, fragment_fn, input_generator):
+        self.fragment_fn = fragment_fn
+        self.input_generator = input_generator
+
+    def __iter__(self):
+        for example in self.input_generator():
+            for fragment in self.fragment_fn(example):
+                yield fragment
 
 
 def recursive_transform(func, dict_list_val, list2array=False):
