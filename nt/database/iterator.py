@@ -153,14 +153,65 @@ class BaseIterator:
         used to read and add audio to the example dict (see read_audio method).
 
         Note:
-            map_fn can do inplace transformations without using copy.
+          - map_fn can do inplace transformations without using copy.
             The ExampleIterator makes a deepcopy of each example and prevents a
             modification of the root example.
+          - If num_workers > 0 that the map_fn is performed in parallel.
+            But the input iterator is still executed serial.
+            This allows an arbitrary input iterator. When it is desired to get
+            an example in parallel, use prefetch on an indexable iterator.
         """
         if num_workers > 0:
             return ParMapIterator(
                 map_fn, self, num_workers=num_workers, buffer_size=buffer_size)
         return MapIterator(map_fn, self)
+
+    def prefetch(self, num_workers, buffer_size, backend='t'):
+        """
+
+        Args:
+            num_workers:
+            buffer_size:
+
+        Returns:
+
+        >>> import string
+        >>> ascii = string.ascii_lowercase
+        >>> it = ExamplesIterator({k: v for v, k in enumerate(ascii[:10])})
+        >>> # ds1 = ds1.items().map(lambda x: {'example_id': x[0], **x[1]})
+        >>> list(it)
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        >>> def foo(ex):
+        ...     print(f'called with {ex}')
+        ...     return ex
+        >>> it = it.map(foo)
+        >>> list(it)
+        called with 0
+        called with 1
+        called with 2
+        called with 3
+        called with 4
+        called with 5
+        called with 6
+        called with 7
+        called with 8
+        called with 9
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        >>> it = it.prefetch(2, 4)
+        >>> next(iter(it))
+        called with 0
+        called with 1
+        called with 2
+        called with 3
+        0
+
+        """
+        return PrefetchIterator(
+            input_iterator=self,
+            num_workers=num_workers,
+            buffer_size=buffer_size,
+            backend=backend,
+        )
 
     def filter(self, filter_fn, lazy=True):
         """
@@ -265,6 +316,13 @@ class BaseIterator:
         :param rng:
         :param buffer_size:
         :return:
+
+        Note:
+         - Use the buffer_size only in special cases were the dataset is
+           already shuffled. For example a iterator is shuffled and then a
+           fragment call splits on into multiple examples. In this case a local
+           shuffle (i.e. buffer_size > 0) is reasonable.
+
         """
         # Should reshuffle default be True or False
         if buffer_size is not None:
@@ -278,6 +336,23 @@ class BaseIterator:
             return ShuffleIterator(self, rng=rng)
         else:
             raise ValueError(reshuffle, self)
+
+    def tile(self, reps, shuffle=False):
+        """
+        Constructs an new iterator by repeating the iterator the number of
+        times given by reps.
+
+        The shuffle option if provided, because before concatenating the
+        shuffle is applied.
+
+        """
+        iterators = [self] * reps
+        if shuffle:
+            iterators = [
+                it.shuffle()
+                for it in iterators
+            ]
+        return self.__class__.concatenate(*iterators)
 
     def groupby(self, group_fn):
         """
@@ -330,6 +405,13 @@ class BaseIterator:
         """
         Fragments each example into multiple new examples.
         E.g. use channels as single examples or split each example into segments
+
+        >>> examples = {'a': [1, 2], 'b': [3, 4]}
+        >>> it = ExamplesIterator(examples)
+        >>> list(it)
+        [[1, 2], [3, 4]]
+        >>> list(it.fragment(lambda ex: ex))
+        [1, 2, 3, 4]
         """
         return FragmentIterator(fragment_fn, self)
 
@@ -520,6 +602,9 @@ class MapIterator(BaseIterator):
 
 
 class ParMapIterator(MapIterator):
+    """
+    Should this iterator support getitem? Getitem disables the buffer.
+    """
     def __init__(
             self, map_function, input_iterator,
             num_workers=1, buffer_size=1000
@@ -538,6 +623,38 @@ class ParMapIterator(MapIterator):
                     yield buffer.pop(0).result()
             while buffer:
                 yield buffer.pop(0).result()
+
+
+class PrefetchIterator(BaseIterator):
+    def __init__(self, input_iterator, num_workers, buffer_size, backend='t'):
+
+        # Input iterator needs to be indexable.
+        try:
+            _ = input_iterator.keys()
+        except Exception:
+            raise RuntimeError(
+                'You can only use Prefetch if the incoming iterator is '
+                'indexable.'
+            )
+        assert num_workers >= 1, num_workers
+        assert buffer_size >= num_workers, (num_workers, buffer_size)
+
+        self.input_iterator = input_iterator
+        self.num_workers = num_workers
+        self.buffer_size = buffer_size
+        self.backend = backend
+
+    def __iter__(self):
+
+        from nt.utils.lazy_parallel_map import lazy_parallel_map
+
+        return lazy_parallel_map(
+            self.input_iterator.__getitem__,
+            range(len(self.input_iterator)),
+            buffer_size=self.buffer_size,
+            max_workers=self.num_workers,
+            backend=self.backend,
+        )
 
 
 class ShuffleIterator(BaseIterator):
