@@ -237,9 +237,6 @@ class DictDatabase:
 
         return BaseIterator.concatenate(*iterators)
 
-    def get_lengths(self, datasets, length_transform_fn=lambda x: x):
-        raise NotImplementedError
-
     def get_bucket_boundaries(
             self, datasets, num_buckets=1, length_transform_fn=lambda x: x
     ):
@@ -258,6 +255,23 @@ class DictDatabase:
     def read_fn(self):
         return lambda x: audioread(x)[0]
 
+    def get_lengths(self, datasets, length_transform_fn=lambda x: x):
+        it = self.get_iterator_by_names(datasets)
+        lengths = dict()
+        for example in it:
+            num_samples = example[NUM_SAMPLES]
+            if isinstance(num_samples, dict):
+                num_samples = num_samples[OBSERVATION]
+            example_id = example[EXAMPLE_ID]
+            lengths[example_id] = (length_transform_fn(num_samples))
+        return lengths
+
+    def add_num_samples(self, example):
+        if keys.NUM_SAMPLES in example:
+            return example
+        else:
+            raise NotImplementedError
+
 
 class JsonDatabase(DictDatabase):
     def __init__(self, json_path: [str, Path]):
@@ -274,20 +288,6 @@ class JsonDatabase(DictDatabase):
 
     def __repr__(self):
         return f'{type(self).__name__}({self._json_path!r})'
-
-    def get_lengths(self, datasets, length_transform_fn=lambda x: x):
-        it = self.get_iterator_by_names(datasets)
-        lengths = dict()
-        for example in it:
-            num_samples = example[NUM_SAMPLES]
-            if isinstance(num_samples, dict):
-                num_samples = num_samples[OBSERVATION]
-            example_id = example[EXAMPLE_ID]
-            lengths[example_id] = (length_transform_fn(num_samples))
-        return lengths
-
-    def add_num_samples(self, example):
-        return example
 
 
 class KaldiDatabase(DictDatabase):
