@@ -440,6 +440,18 @@ class BaseIterator:
         """
         return self.split(num_shards)[shard_index]
 
+    def batch(self, batch_size, drop_last=False, collate_fn=None):
+        """
+        :param batch_size:
+        :param drop_last:
+        :param collate_fn:
+        :return:
+        """
+        it = BatchIterator(self, batch_size, drop_last)
+        if collate_fn is not None:
+            it = it.map(collate_fn)
+        return it
+
     def __str__(self):
         return f'{self.__class__.__name__}()'
 
@@ -1085,6 +1097,89 @@ class FragmentIterator(BaseIterator):
         for example in self.input_generator():
             for fragment in self.fragment_fn(example):
                 yield fragment
+
+
+class BatchIterator(BaseIterator):
+    """
+
+    Is it not it better to use the collate_fn with a map?
+    "BatchIterator(iterator, batchsize).map(collate_fn)"
+    Similar to zip for the iterator.
+
+    >>> from nt.database.iterator import ExamplesIterator
+    >>> import string
+    >>> examples = {c: i for i, c in enumerate(string.ascii_letters[:7])}
+    >>> it = ExamplesIterator(examples)
+    >>> it = BatchIterator(it, 3)
+    >>> list(it), len(it)
+    ([[0, 1, 2], [3, 4, 5], [6]], 3)
+    >>> it[2], it[-1]
+    ([6], [6])
+    >>> it[3]
+    Traceback (most recent call last):
+    ...
+    IndexError: tuple index out of range
+    >>> it = ExamplesIterator(examples)
+    >>> it = BatchIterator(it, 3, drop_last=True)
+    >>> list(it), len(it)
+    ([[0, 1, 2], [3, 4, 5]], 2)
+    >>> it[-1]
+    [3, 4, 5]
+    >>> it = ExamplesIterator(examples)[:6]
+    >>> it = BatchIterator(it, 3)
+    >>> list(it), len(it)
+    ([[0, 1, 2], [3, 4, 5]], 2)
+    >>> it[1]
+    [3, 4, 5]
+    >>> it['abc']
+    Traceback (most recent call last):
+    ...
+    NotImplementedError: __getitem__ is not implemented for <class 'trainer.BatchIterator'>['abc'],
+    where type('abc') == <class 'str'>
+    self: BatchIterator()
+
+    """
+    def __init__(self, input_generator, batch_size, drop_last=False):
+        self.input_generator = input_generator
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+
+    def __iter__(self):
+        current_batch = list()
+        for element in self.input_generator():
+            current_batch.append(element)
+            if len(current_batch) >= self.batch_size:
+                yield current_batch
+                current_batch = list()
+        if len(current_batch) > 0 and not self.drop_last:
+            yield current_batch
+
+    def __getitem__(self, index):
+        if isinstance(index, numbers.Integral):
+            if index < 0:
+                # only touch len when necessary
+                index = index % len(self)
+            input_index = index * self.batch_size
+            current_batch = []
+            for i in range(self.batch_size):
+                try:
+                    current_batch.append(self.input_generator[input_index + i])
+                except IndexError:
+                    if i == 0 or self.drop_last:
+                        raise
+                    else:
+                        pass
+            return current_batch
+        # elif isinstance(index, str):
+        # ToDo: allow merge/collate keys -> allows __getitem__(str)
+        else:
+            return super().__getitem__(index)
+
+    def __len__(self):
+        length = len(self.input_generator) / self.batch_size
+        if self.drop_last:
+            return int(length)
+        return int(np.ceil(length))
 
 
 def recursive_transform(func, dict_list_val, list2array=False):
