@@ -106,14 +106,14 @@ class BaseIterator:
         elif isinstance(item, bytes):
             raise NotImplementedError(
                 f'This is not implemented for an bytes objext. Use bytes.decode() to convert it to an str.\n'
-                f'__getitem__ is not implemented for {self.__class__}[{item}],\n'
-                f'where type({item}) == {type(item)} '
-                f'self: \n{repr(self)}'
+                f'__getitem__ is not implemented for {self.__class__}[{item!r}],\n'
+                f'where type({item!r}) == {type(item)} '
+                f'self: \n{self!r}'
             )
         raise NotImplementedError(
-            f'__getitem__ is not implemented for {self.__class__}[{item}],\n'
-            f'where type({item}) == {type(item)} '
-            f'self: \n{repr(self)}'
+            f'__getitem__ is not implemented for {self.__class__}[{item!r}],\n'
+            f'where type({item!r}) == {type(item)}\n'
+            f'self: {self!r}'
         )
 
     def keys(self):
