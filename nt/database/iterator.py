@@ -142,7 +142,7 @@ class BaseIterator:
             f"Use 'key in {self.__class__}.keys()' "
             f"instead of 'key in {self.__class__}'")
 
-    def map(self, map_fn, num_workers=0, buffer_size=100):
+    def map(self, map_fn, num_workers=0, buffer_size=100, backend='t'):
         """
         :param map_fn: function to transform an example dict. Takes an example
             dict as provided by this iterator and returns a transformed
@@ -163,7 +163,9 @@ class BaseIterator:
         """
         if num_workers > 0:
             return ParMapIterator(
-                map_fn, self, num_workers=num_workers, buffer_size=buffer_size)
+                map_fn, self, num_workers=num_workers, buffer_size=buffer_size,
+                backend=backend
+            )
         return MapIterator(map_fn, self)
 
     def prefetch(self, num_workers, buffer_size, backend='t'):
@@ -618,23 +620,26 @@ class ParMapIterator(MapIterator):
     Should this iterator support getitem? Getitem disables the buffer.
     """
     def __init__(
-            self, map_function, input_iterator,
-            num_workers=1, buffer_size=1000
+            self, map_function, input_iterator, num_workers, buffer_size,
+            backend='t'
     ):
         super().__init__(map_function, input_iterator)
         assert num_workers >= 1
         self.num_workers = num_workers
         self.buffer_size = buffer_size
+        self.backend = backend
 
     def __iter__(self):
-        with concurrent.futures.ProcessPoolExecutor(self.num_workers) as ex:
-            buffer = list()
-            for element in self.input_iterator:
-                buffer.append(ex.submit(self.map_function, element))
-                if len(buffer) >= self.buffer_size:
-                    yield buffer.pop(0).result()
-            while buffer:
-                yield buffer.pop(0).result()
+
+        from nt.utils.lazy_parallel_map import lazy_parallel_map
+
+        return lazy_parallel_map(
+            self.map_function,
+            self.input_iterator,
+            buffer_size=self.buffer_size,
+            max_workers=self.num_workers,
+            backend=self.backend,
+        )
 
 
 class PrefetchIterator(BaseIterator):
@@ -1187,7 +1192,7 @@ class BatchIterator(BaseIterator):
         return int(np.ceil(length))
 
 
-def recursive_transform(func, dict_list_val, list2array=False):
+def recursive_transform(func, dict_list_val, iterate_lists=True, list2array=False):
     """
     Applies a function func to all leaf values in a dict or list or directly to
     a value. The hierarchy of dict_list_val is inherited. Lists are stacked
@@ -1196,8 +1201,7 @@ def recursive_transform(func, dict_list_val, list2array=False):
     (see top of this file).
     :param func: a transformation function to be applied to the leaf values
     :param dict_list_val: dict list or value
-    :param args: args for func
-    :param kwargs: kwargs for func
+    :param iterate_lists:
     :param list2array:
     :return: dict, list or value with transformed elements
     """
@@ -1205,7 +1209,7 @@ def recursive_transform(func, dict_list_val, list2array=False):
         # Recursively call itself
         return {key: recursive_transform(func, val, list2array)
                 for key, val in dict_list_val.items()}
-    if isinstance(dict_list_val, (list, tuple)):
+    if isinstance(dict_list_val, (list, tuple)) and iterate_lists:
         # Recursively call itself
         l = type(dict_list_val)(
             [recursive_transform(func, val, list2array)
