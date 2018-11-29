@@ -113,7 +113,7 @@ class BaseIterator:
         raise NotImplementedError(
             f'__getitem__ is not implemented for {self.__class__}[{item!r}],\n'
             f'where type({item!r}) == {type(item)}\n'
-            f'self: {self!r}'
+            f'self:\n{self!r}'
         )
 
     def keys(self):
@@ -1102,15 +1102,14 @@ class FragmentIterator(BaseIterator):
 class BatchIterator(BaseIterator):
     """
 
-    Is it not it better to use the collate_fn with a map?
-    "BatchIterator(iterator, batchsize).map(collate_fn)"
-    Similar to zip for the iterator.
-
     >>> from nt.database.iterator import ExamplesIterator
     >>> import string
     >>> examples = {c: i for i, c in enumerate(string.ascii_letters[:7])}
     >>> it = ExamplesIterator(examples)
-    >>> it = BatchIterator(it, 3)
+    >>> it = it.batch(3)
+    >>> it
+      ExamplesIterator(len=7)
+    BatchIterator(batch_size=3)
     >>> list(it), len(it)
     ([[0, 1, 2], [3, 4, 5], [6]], 3)
     >>> it[2], it[-1]
@@ -1120,13 +1119,13 @@ class BatchIterator(BaseIterator):
     ...
     IndexError: tuple index out of range
     >>> it = ExamplesIterator(examples)
-    >>> it = BatchIterator(it, 3, drop_last=True)
+    >>> it = it.batch(3, drop_last=True)
     >>> list(it), len(it)
     ([[0, 1, 2], [3, 4, 5]], 2)
     >>> it[-1]
     [3, 4, 5]
     >>> it = ExamplesIterator(examples)[:6]
-    >>> it = BatchIterator(it, 3)
+    >>> it = it.batch(3)
     >>> list(it), len(it)
     ([[0, 1, 2], [3, 4, 5]], 2)
     >>> it[1]
@@ -1134,19 +1133,25 @@ class BatchIterator(BaseIterator):
     >>> it['abc']
     Traceback (most recent call last):
     ...
-    NotImplementedError: __getitem__ is not implemented for <class 'trainer.BatchIterator'>['abc'],
+    NotImplementedError: __getitem__ is not implemented for <class 'nt.database.iterator.BatchIterator'>['abc'],
     where type('abc') == <class 'str'>
-    self: BatchIterator()
+    self:
+        ExamplesIterator(len=7)
+      SliceIterator(slice(None, 6, None))
+    BatchIterator(batch_size=3)
 
     """
-    def __init__(self, input_generator, batch_size, drop_last=False):
-        self.input_generator = input_generator
+    def __init__(self, input_iterator, batch_size, drop_last=False):
+        self.input_iterator = input_iterator
         self.batch_size = batch_size
         self.drop_last = drop_last
 
+    def __str__(self):
+        return f'{self.__class__.__name__}(batch_size={self.batch_size})'
+
     def __iter__(self):
         current_batch = list()
-        for element in self.input_generator():
+        for element in self.input_iterator():
             current_batch.append(element)
             if len(current_batch) >= self.batch_size:
                 yield current_batch
@@ -1163,7 +1168,7 @@ class BatchIterator(BaseIterator):
             current_batch = []
             for i in range(self.batch_size):
                 try:
-                    current_batch.append(self.input_generator[input_index + i])
+                    current_batch.append(self.input_iterator[input_index + i])
                 except IndexError:
                     if i == 0 or self.drop_last:
                         raise
@@ -1176,7 +1181,7 @@ class BatchIterator(BaseIterator):
             return super().__getitem__(index)
 
     def __len__(self):
-        length = len(self.input_generator) / self.batch_size
+        length = len(self.input_iterator) / self.batch_size
         if self.drop_last:
             return int(length)
         return int(np.ceil(length))
