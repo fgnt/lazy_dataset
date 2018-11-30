@@ -1192,7 +1192,7 @@ class BatchIterator(BaseIterator):
         return int(np.ceil(length))
 
 
-def recursive_transform(func, dict_list_val, iterate_lists=True, list2array=False):
+def recursive_transform(func, dict_list_val, list2array=False):
     """
     Applies a function func to all leaf values in a dict or list or directly to
     a value. The hierarchy of dict_list_val is inherited. Lists are stacked
@@ -1209,7 +1209,7 @@ def recursive_transform(func, dict_list_val, iterate_lists=True, list2array=Fals
         # Recursively call itself
         return {key: recursive_transform(func, val, list2array)
                 for key, val in dict_list_val.items()}
-    if isinstance(dict_list_val, (list, tuple)) and iterate_lists:
+    if isinstance(dict_list_val, (list, tuple)):
         # Recursively call itself
         l = type(dict_list_val)(
             [recursive_transform(func, val, list2array)
@@ -1219,7 +1219,7 @@ def recursive_transform(func, dict_list_val, iterate_lists=True, list2array=Fals
             return np.array(l)
         return l
     else:
-        # applies function to a leaf value which is not a dict or list
+        # applies function to a leaf value
         return func(dict_list_val)
 
 
