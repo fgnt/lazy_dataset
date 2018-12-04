@@ -146,6 +146,7 @@ class DictDatabase:
 
     @cached_property
     def datasets(self):
+        """allows creation of iterator with point notation"""
         dataset_names = self.dataset_names
         return type(
             'DatasetsCollection',
