@@ -1249,6 +1249,11 @@ class AudioReader:
         :return: example dict with audio data added
         """
         if self.audio_keys is not None:
+            keys = list(example[self.src_key].keys())
+            for audio_key in self.audio_keys:
+                assert audio_key in keys, (
+                    f'Trying to read {audio_key} but only {keys} are available'
+                )
             data = {
                 audio_key: recursive_transform(
                     self._read_fn, example[self.src_key][audio_key],
@@ -1431,6 +1436,8 @@ class LimitAudioLength:
     def __call__(self, example):
         valid_ex = keys.NUM_SAMPLES in example and \
             example[keys.NUM_SAMPLES] <= self.max_lengths
+        orig_len = example[keys.NUM_SAMPLES]
+        example['num_dismissed_samples'] = 0
         if not valid_ex:
             delta = max(1, (example[keys.NUM_SAMPLES] - self.max_lengths) // 2)
             start = np.random.choice(delta, 1)[0]
@@ -1450,22 +1457,23 @@ class LimitAudioLength:
                     cut_fn, example[keys.AUDIO_DATA], list2array=True
                 )
             example[keys.NUM_SAMPLES] = self.max_lengths
+            example['num_dismissed_samples'] = orig_len - self.max_lengths
 
             # alignment
             if keys.ALIGNMENT in example:
-                num_frames_start = self._sample_to_frame(start)
-                num_frames_length = self._sample_to_frame(self.max_lengths)
+                start_frame = self._sample_to_frame(start)
+                new_num_frames = self._sample_to_frame(self.max_lengths)
                 # Check for LFR
                 num_frames = (example[keys.NUM_SAMPLES] - 400 + 160) // 160
                 num_frames_lfr = self._frame_to_lfr_frame(num_frames)
                 if len(example[keys.ALIGNMENT]) == num_frames_lfr:
-                    num_frames_start = self._frame_to_lfr_frame(num_frames_start)
-                    num_frames_length = self._frame_to_lfr_frame(num_frames_length)
+                    start_frame = self._frame_to_lfr_frame(start_frame)
+                    new_num_frames = self._frame_to_lfr_frame(new_num_frames)
                 # Adjust alignment
                 example[keys.ALIGNMENT] = \
-                    example[keys.ALIGNMENT][num_frames_start: num_frames_start
-                                            + num_frames_length]
-                example[keys.NUM_ALIGNMENT_FRAMES] = num_frames_length
+                    example[keys.ALIGNMENT][start_frame: start_frame
+                                            + new_num_frames]
+                example[keys.NUM_ALIGNMENT_FRAMES] = new_num_frames
 
             LOG.warning(f'Cutting example to length {self.max_lengths}'
                         f' :{example[keys.EXAMPLE_ID]}')
