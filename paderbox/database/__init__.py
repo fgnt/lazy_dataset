@@ -69,13 +69,13 @@ from cached_property import cached_property
 
 import numpy as np
 
-from nt import kaldi
-from nt.io import load_json
-from nt.io.audioread import audioread
+from paderbox import kaldi
+from paderbox.io import load_json
+from paderbox.io.audioread import audioread
 
-from nt.database.keys import *
-from nt.database.iterator import BaseIterator
-from nt.database.iterator import ExamplesIterator
+from paderbox.database.keys import *
+from paderbox.database.iterator import BaseIterator
+from paderbox.database.iterator import ExamplesIterator
 
 LOG = logging.getLogger('Database')
 
