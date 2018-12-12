@@ -72,9 +72,9 @@ import random as rnd
 
 import numpy as np
 
-from nt import kaldi
-from nt.database import keys
-from nt.io.audioread import audioread
+from paderbox import kaldi
+from paderbox.database import keys
+from paderbox.io.audioread import audioread
 
 LOG = logging.getLogger('Database')
 
@@ -631,7 +631,7 @@ class ParMapIterator(MapIterator):
 
     def __iter__(self):
 
-        from nt.utils.lazy_parallel_map import lazy_parallel_map
+        from paderbox.utils.lazy_parallel_map import lazy_parallel_map
 
         return lazy_parallel_map(
             self.map_function,
@@ -663,7 +663,7 @@ class PrefetchIterator(BaseIterator):
 
     def __iter__(self):
 
-        from nt.utils.lazy_parallel_map import lazy_parallel_map
+        from paderbox.utils.lazy_parallel_map import lazy_parallel_map
 
         return lazy_parallel_map(
             self.input_iterator.__getitem__,
@@ -1107,7 +1107,7 @@ class FragmentIterator(BaseIterator):
 class BatchIterator(BaseIterator):
     """
 
-    >>> from nt.database.iterator import ExamplesIterator
+    >>> from paderbox.database.iterator import ExamplesIterator
     >>> import string
     >>> examples = {c: i for i, c in enumerate(string.ascii_letters[:7])}
     >>> it = ExamplesIterator(examples)
