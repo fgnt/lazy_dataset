@@ -4,6 +4,11 @@ from .database import (
     KaldiDatabase,
 )
 from . import (
+    database,
+    iterator,
+    keys,
+)
+from . import (
     ami,
     audio_set,
     chime,
