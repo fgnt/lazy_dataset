@@ -181,7 +181,7 @@ class DictDatabase:
     def _iterator_weak_ref_dict(self):
         return weakref.WeakValueDictionary()
 
-    def get_iterator_by_names(self, dataset_names, use_weakref=True):
+    def get_iterator_by_names(self, dataset_names=None):
         """
         Returns a single Iterator over specified datasets.
 
@@ -191,17 +191,25 @@ class DictDatabase:
             If None an iterator over the complete databases will be returned.
         :return:
         """
+        if dataset_names is None:
+            raise TypeError(
+                f'Missing dataset_names, use e.g.: {self.dataset_names}'
+            )
+
         dataset_names = to_list(dataset_names, item_type=str)
         iterators = list()
         for dataset_name in dataset_names:
-            if use_weakref:
-                try:
-                    it = self._iterator_weak_ref_dict[dataset_name]
-                except KeyError:
-                    pass
-                else:
-                    iterators.append(it)
-                    continue
+            # Resulting iterator is immutable anyway due to pickle a few lines
+            # further down. This code here avoids to store the resulting
+            # iterator more than once in memory. Discuss with CBJ for details.
+            try:
+                it = self._iterator_weak_ref_dict[dataset_name]
+            except KeyError:
+                pass
+            else:
+                iterators.append(it)
+                continue
+
             try:
                 examples = self._get_dataset_from_database_dict(dataset_name)
             except KeyError:
@@ -231,8 +239,7 @@ class DictDatabase:
             # Apply map function to restore binary data
             it = it.map(pickle.loads)
 
-            if use_weakref:
-                self._iterator_weak_ref_dict[dataset_name] = it
+            self._iterator_weak_ref_dict[dataset_name] = it
 
             iterators.append(it)
 
