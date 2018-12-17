@@ -1249,6 +1249,10 @@ class AudioReader:
         :return: example dict with audio data added
         """
         if self.audio_keys is not None:
+            assert isinstance(example[self.src_key], dict), (
+                "example[self.src_key] is not a dict. You probably want to "
+                f"set audio_keys to None: {example[self.src_key]}"
+            )
             keys = list(example[self.src_key].keys())
             for audio_key in self.audio_keys:
                 assert audio_key in keys, (
