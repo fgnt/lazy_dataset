@@ -458,7 +458,7 @@ class BaseIterator:
         return f'{self.__class__.__name__}()'
 
     def __repr__(self):
-        # CB: Discussable, if this methode name should be something like
+        # CB: Discussable, if this method name should be something like
         #     description instead of __repr__.
         import textwrap
         r = ''
@@ -647,7 +647,7 @@ class PrefetchIterator(BaseIterator):
 
         # Input iterator needs to be indexable.
         try:
-            _ = input_iterator.keys()
+            _ = len(input_iterator)
         except Exception:
             raise RuntimeError(
                 'You can only use Prefetch if the incoming iterator is '
