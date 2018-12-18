@@ -299,7 +299,7 @@ class BaseIterator:
         {'example_id': 'b', 'z': 3, 'y': 'd'}
 
         # Lambda that merges an arbitary amount of dicts.
-        >>> ds5 = ds3.map(lambda exmaple: dict(sum([list(e.items()) for e in exmaple], [])))
+        >>> ds5 = ds3.map(lambda example: dict(sum([list(e.items()) for e in example], [])))
         >>> for e in ds5: print(e)
         {'example_id': 'a', 'z': 1, 'y': 'c'}
         {'example_id': 'b', 'z': 3, 'y': 'd'}
