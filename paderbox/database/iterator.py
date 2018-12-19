@@ -442,17 +442,13 @@ class BaseIterator:
         """
         return self.split(num_shards)[shard_index]
 
-    def batch(self, batch_size, drop_last=False, collate_fn=None):
+    def batch(self, batch_size, drop_last=False):
         """
         :param batch_size:
         :param drop_last:
-        :param collate_fn:
         :return:
         """
-        it = BatchIterator(self, batch_size, drop_last)
-        if collate_fn is not None:
-            it = it.map(collate_fn)
-        return it
+        return BatchIterator(self, batch_size, drop_last)
 
     def __str__(self):
         return f'{self.__class__.__name__}()'
