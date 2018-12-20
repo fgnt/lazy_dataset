@@ -78,9 +78,22 @@ from paderbox.io.audioread import audioread
 
 LOG = logging.getLogger('Database')
 
+import collections
+import typing
+
+
+class FilterException(Exception):
+    pass
+
 
 class BaseIterator:
     def __call__(self):
+        """
+        Usecase
+          tf.data.Dataset.from_generator(iterator)
+        Without __call__:
+          tf.data.Dataset.from_generator(lambda: iterator)
+        """
         return self.__iter__()
 
     def __iter__(self):
@@ -168,7 +181,7 @@ class BaseIterator:
             )
         return MapIterator(map_fn, self)
 
-    def prefetch(self, num_workers, buffer_size, backend='t'):
+    def prefetch(self, num_workers, buffer_size, backend='t', catch_filter_exception=None):
         """
 
         Args:
@@ -213,6 +226,7 @@ class BaseIterator:
             num_workers=num_workers,
             buffer_size=buffer_size,
             backend=backend,
+            catch_filter_exception=catch_filter_exception,
         )
 
     def filter(self, filter_fn, lazy=True):
@@ -247,6 +261,19 @@ class BaseIterator:
                     'indexable.'
                 )
             return self[[i for i, e in enumerate(self) if filter_fn(e)]]
+
+    def catch(self, exceptions=FilterException, warn=False):
+        """
+        Drop examples that throw an exception (default: FilterException).
+        This is an alternative to filter.
+
+        Args:
+            exceptions:
+            warn: If True, enable logger warning.
+
+        Returns:
+        """
+        return CatchExceptionIterator(self, exceptions=exceptions, warn=warn)
 
     def concatenate(self, *others):
         """
@@ -638,8 +665,55 @@ class ParMapIterator(MapIterator):
         )
 
 
+class CatchExceptionIterator(BaseIterator):
+    """
+    >>> it = ExamplesIterator({'a': 1, 'b': 2, 'c': 3})
+    >>> list(it)
+    [1, 2, 3]
+    >>> def foo(integer):
+    ...     if integer == 2:
+    ...         raise FilterException('Exception msg')
+    ...     else:
+    ...         return integer
+    >>> list(it.map(foo))
+    Traceback (most recent call last):
+    ...
+    iterator.FilterException: Exception msg
+    >>> list(it.map(foo).catch())
+    [1, 3]
+    """
+    def __init__(
+            self,
+            input_iterator,
+            exceptions=FilterException,
+            warn=False
+    ):
+        self.input_iterator = input_iterator
+        self.exceptions = exceptions
+        self.warn = warn
+
+    # def __getitem__(self, item):
+    #     pass
+
+    def __iter__(self):
+        for i in range(len(self.input_iterator)):
+            try:
+                yield self.input_iterator[i]
+            except self.exceptions as e:
+                if self.warn:
+                    msg = repr(e)
+                    LOG.warning(msg)
+
+
 class PrefetchIterator(BaseIterator):
-    def __init__(self, input_iterator, num_workers, buffer_size, backend='t'):
+    def __init__(
+            self,
+            input_iterator,
+            num_workers,
+            buffer_size,
+            backend='t',
+            catch_filter_exception=False,
+    ):
 
         # Input iterator needs to be indexable.
         try:
@@ -656,18 +730,47 @@ class PrefetchIterator(BaseIterator):
         self.num_workers = num_workers
         self.buffer_size = buffer_size
         self.backend = backend
+        self.catch_filter_exception = catch_filter_exception
 
     def __iter__(self):
 
         from paderbox.utils.lazy_parallel_map import lazy_parallel_map
 
-        return lazy_parallel_map(
-            self.input_iterator.__getitem__,
-            range(len(self.input_iterator)),
-            buffer_size=self.buffer_size,
-            max_workers=self.num_workers,
-            backend=self.backend,
-        )
+        if self.catch_filter_exception is False\
+                or self.catch_filter_exception is None\
+                or (isinstance(self.catch_filter_exception, (tuple, list)) and len(self.catch_filter_exception) == 0):
+            return lazy_parallel_map(
+                self.input_iterator.__getitem__,
+                range(len(self.input_iterator)),
+                buffer_size=self.buffer_size,
+                max_workers=self.num_workers,
+                backend=self.backend,
+            )
+        else:
+            if self.catch_filter_exception is True:
+                catch_filter_exception = FilterException
+            else:
+                catch_filter_exception = self.catch_filter_exception
+
+            unique_object = object()
+
+            def catcher(index):
+                try:
+                    return self.input_iterator[index]
+                except catch_filter_exception:
+                    return unique_object
+
+            for data in lazy_parallel_map(
+                catcher,
+                range(len(self.input_iterator)),
+                buffer_size=self.buffer_size,
+                max_workers=self.num_workers,
+                backend=self.backend,
+            ):
+                if data is unique_object:
+                    pass
+                else:
+                    yield data
 
 
 class ShuffleIterator(BaseIterator):
