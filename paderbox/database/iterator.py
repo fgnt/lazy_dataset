@@ -703,7 +703,7 @@ class CatchExceptionIterator(BaseIterator):
 
     def __getitem__(self, item):
         if isinstance(item, (str)):
-            return self.map_function(self.input_iterator[item])
+            return self.input_iterator[item]
         elif isinstance(item, numbers.Integral):
             raise NotImplementedError(
                 f'__getitem__ is not well defined for '
