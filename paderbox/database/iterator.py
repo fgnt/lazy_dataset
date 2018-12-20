@@ -755,10 +755,15 @@ class PrefetchIterator(BaseIterator):
 
         from paderbox.utils.lazy_parallel_map import lazy_parallel_map
 
-        if self.catch_filter_exception is False\
-                or self.catch_filter_exception is None\
-                or (isinstance(self.catch_filter_exception, (tuple, list)) and len(self.catch_filter_exception) == 0):
-            return lazy_parallel_map(
+        if (
+                self.catch_filter_exception is False
+                or self.catch_filter_exception is None
+                or (
+                    isinstance(self.catch_filter_exception, (tuple, list))
+                    and len(self.catch_filter_exception) == 0
+                )
+        ):
+            yield from lazy_parallel_map(
                 self.input_iterator.__getitem__,
                 range(len(self.input_iterator)),
                 buffer_size=self.buffer_size,
