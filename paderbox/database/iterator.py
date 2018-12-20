@@ -681,6 +681,15 @@ class CatchExceptionIterator(BaseIterator):
     iterator.FilterException: Exception msg
     >>> list(it.map(foo).catch())
     [1, 3]
+    >>> it.map(foo).catch()[0]  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    NotImplementedError: __getitem__ is not well defined for <class 'iterator.CatchExceptionIterator'>[0],
+    because 0 is an index
+    self:
+        ExamplesIterator(len=3)
+      MapIterator(<function foo at ...>)
+    CatchExceptionIterator()
     """
     def __init__(
             self,
@@ -692,8 +701,18 @@ class CatchExceptionIterator(BaseIterator):
         self.exceptions = exceptions
         self.warn = warn
 
-    # def __getitem__(self, item):
-    #     pass
+    def __getitem__(self, item):
+        if isinstance(item, (str)):
+            return self.map_function(self.input_iterator[item])
+        elif isinstance(item, numbers.Integral):
+            raise NotImplementedError(
+                f'__getitem__ is not well defined for '
+                f'{self.__class__}[{item!r}],\n'
+                f'because {item!r} is an index\n'
+                f'self:\n{self!r}'
+            )
+        else:
+            return super().__getitem__(item)
 
     def __iter__(self):
         for i in range(len(self.input_iterator)):
