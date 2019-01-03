@@ -2,6 +2,7 @@ from .database import (
     DictDatabase,
     JsonDatabase,
     KaldiDatabase,
+    HybridASRKaldiDatabaseTemplate
 )
 
 __all__ = [
