@@ -1583,8 +1583,6 @@ class LimitAudioLength:
                 example[keys.AUDIO_DATA] = recursive_transform(
                     cut_fn, example[keys.AUDIO_DATA], list2array=True
                 )
-            example[keys.NUM_SAMPLES] = self.max_lengths
-            example['num_dismissed_samples'] = orig_len - self.max_lengths
 
             # alignment
             if keys.ALIGNMENT in example:
@@ -1593,7 +1591,8 @@ class LimitAudioLength:
                 # Check for LFR
                 num_frames = (example[keys.NUM_SAMPLES] - 400 + 160) // 160
                 num_frames_lfr = self._frame_to_lfr_frame(num_frames)
-                if len(example[keys.ALIGNMENT]) == num_frames_lfr:
+                is_lfr = len(example[keys.ALIGNMENT]) == num_frames_lfr
+                if is_lfr:
                     start_frame = self._frame_to_lfr_frame(start_frame)
                     new_num_frames = self._frame_to_lfr_frame(new_num_frames)
                 # Adjust alignment
@@ -1602,8 +1601,16 @@ class LimitAudioLength:
                                             + new_num_frames]
                 example[keys.NUM_ALIGNMENT_FRAMES] = new_num_frames
 
-            LOG.warning(f'Cutting example to length {self.max_lengths}'
-                        f' :{example[keys.EXAMPLE_ID]}')
+            example[keys.NUM_SAMPLES] = self.max_lengths
+            example['num_dismissed_samples'] = orig_len - self.max_lengths
+
+            LOG.warning(
+                f'Cutting {example[keys.EXAMPLE_ID]}'
+                f' to length {self.max_lengths}'
+                f' start_frame: {start_frame}'
+                f' new_num_frames: {new_num_frames}'
+                f' lfr: {is_lfr}'
+            )
         return example
 
 
