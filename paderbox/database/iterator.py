@@ -1348,7 +1348,8 @@ def recursive_transform(func, dict_list_val, list2array=False):
 
 class AudioReader:
     def __init__(self, src_key='audio_path', dst_key='audio_data',
-                 audio_keys='observation', read_fn=lambda x: audioread(x)[0]):
+                 audio_keys='observation', read_fn=lambda x: audioread(x)[0],
+                 optional_audio_keys=None):
         """
         recursively read audio files and add audio
         signals to the example dict.
@@ -1357,6 +1358,7 @@ class AudioReader:
         :param dst_key: key to add the read audio to the example dict.
         :param audio_keys: str or list of subkeys that are relevant. This can be
             used to prevent unnecessary audioread.
+        :param optional_audio_keys: str or list of subkeys to read if present.
         """
         self.src_key = src_key
         self.dst_key = dst_key
@@ -1364,6 +1366,10 @@ class AudioReader:
             self.audio_keys = to_list(audio_keys)
         else:
             self.audio_keys = None
+        if optional_audio_keys is not None:
+            self.optional_audio_keys = to_list(optional_audio_keys)
+        else:
+            self.optional_audio_keys = None
         self._read_fn = read_fn
 
     def __call__(self, example):
@@ -1388,6 +1394,15 @@ class AudioReader:
                 )
                 for audio_key in self.audio_keys
             }
+            if self.optional_audio_keys is not None:
+                data.update({
+                    audio_key: recursive_transform(
+                        self._read_fn, example[self.src_key][audio_key],
+                        list2array=True
+                    )
+                    for audio_key in self.optional_audio_keys
+                    if audio_key in example[self.src_key]
+                })
         else:
             data = recursive_transform(
                 self._read_fn, example[self.src_key], list2array=True
@@ -1578,6 +1593,7 @@ class LimitAudioLength:
                         list2array=True
                     )
                     for audio_key in self.audio_keys
+                    if audio_key in example[keys.AUDIO_DATA]
                 }
             else:
                 example[keys.AUDIO_DATA] = recursive_transform(
