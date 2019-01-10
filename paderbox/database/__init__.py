@@ -20,6 +20,7 @@ __all__ = [
     "german_speechdata_package_v2",
     "librispeech",
     "merl_mixtures",
+    "mnist",
     "noisex92",
     "reverb",
     "tidigits",
