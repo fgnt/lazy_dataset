@@ -1315,6 +1315,63 @@ class BatchIterator(BaseIterator):
         return int(np.ceil(length))
 
 
+class DynamicBucketIterator(BaseIterator):
+    """
+    >>> samples = [1, 10, 5, 7, 8, 2, 4]
+    >>> batch_iterator = DynamicBucketIterator(\
+    samples, 2, key=lambda x: x, min_rate=0.5)
+    >>> [batch for batch in batch_iterator]
+    [[10, 5], [7, 8], [1, 2], [4]]
+    >>> batch_iterator = DynamicBucketIterator(\
+    samples, 2, key=lambda x: x, min_rate=0.5, drop_last=True)
+    >>> [batch for batch in batch_iterator]
+    [[10, 5], [7, 8], [1, 2]]
+    >>> batch_iterator = DynamicBucketIterator(\
+    samples, 2, key=lambda x: x, min_rate=0.8)
+    >>> [batch for batch in batch_iterator]
+    [[10, 8], [5, 4], [1], [7], [2]]
+    """
+    def __init__(
+            self, input_iterator, batch_size, key, min_rate=0.5, max_value=1e6,
+            drop_last=False
+    ):
+        self.input_iterator = input_iterator
+        self.batch_size = batch_size
+        if callable(key):
+            self.key = key
+        elif isinstance(key, str):
+            self.key = lambda x: x[key]
+        else:
+            raise ValueError
+        self.max_value = max_value
+        self.min_rate = min_rate
+        self.drop_last = drop_last
+
+    def __iter__(self):
+        buckets = list()
+        for i, sample in enumerate(self.input_iterator):
+            value = min(self.key(sample), self.max_value)
+            found_bucket = False
+            for i, (bucket, min_value, max_value) in enumerate(buckets):
+                if min_value <= value <= max_value:
+                    bucket.append(sample)
+                    if len(bucket) >= self.batch_size:
+                        buckets.pop(i)
+                        yield bucket
+                    else:
+                        min_value = min(min_value, value*self.min_rate)
+                        max_value = max(max_value, value/self.min_rate)
+                        buckets[i] = (bucket, min_value, max_value)
+                    found_bucket = True
+                    break
+            if not found_bucket:
+                buckets.append(([sample], value*self.min_rate, value/self.min_rate))
+        if not self.drop_last:
+            buckets = sorted(buckets, key=lambda x: len(x[0]), reverse=True)
+            for _ in range(len(buckets)):
+                yield buckets.pop(0)[0]
+
+
 def recursive_transform(func, dict_list_val, list2array=False):
     """
     Applies a function func to all leaf values in a dict or list or directly to
