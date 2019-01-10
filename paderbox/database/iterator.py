@@ -1359,8 +1359,8 @@ class DynamicBucketIterator(BaseIterator):
                         buckets.pop(i)
                         yield bucket
                     else:
-                        min_value = min(min_value, value*self.min_rate)
-                        max_value = max(max_value, value/self.min_rate)
+                        min_value = max(min_value, value*self.min_rate)
+                        max_value = min(max_value, value/self.min_rate)
                         buckets[i] = (bucket, min_value, max_value)
                     found_bucket = True
                     break
