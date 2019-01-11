@@ -1342,7 +1342,7 @@ class DynamicBucketIterator(BaseIterator):
         elif isinstance(key, str):
             self.key = lambda x: x[key]
         else:
-            raise ValueError
+            raise ValueError(key)
         self.max_value = max_value
         self.min_rate = min_rate
         self.drop_last = drop_last
@@ -1368,8 +1368,8 @@ class DynamicBucketIterator(BaseIterator):
                 buckets.append(([sample], value*self.min_rate, value/self.min_rate))
         if not self.drop_last:
             buckets = sorted(buckets, key=lambda x: len(x[0]), reverse=True)
-            for _ in range(len(buckets)):
-                yield buckets.pop(0)[0]
+            for bucket, _, _ in buckets:
+                yield bucket
 
 
 def recursive_transform(func, dict_list_val, list2array=False):
