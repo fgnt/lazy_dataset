@@ -63,11 +63,9 @@ import logging
 import numbers
 import textwrap
 import operator
-import collections
 from copy import deepcopy
 from pathlib import Path
 import itertools
-import concurrent.futures
 import random as rnd
 
 import numpy as np
@@ -79,7 +77,6 @@ from paderbox.io.audioread import audioread
 LOG = logging.getLogger('Database')
 
 import collections
-import typing
 
 
 class FilterException(Exception):
