@@ -651,7 +651,7 @@ class ParMapIterator(MapIterator):
 
     def __iter__(self):
 
-        from paderbox.utils.lazy_parallel_map import lazy_parallel_map
+        from paderbox.utils.parallel_utils import lazy_parallel_map
 
         return lazy_parallel_map(
             self.map_function,
@@ -750,7 +750,7 @@ class PrefetchIterator(BaseIterator):
 
     def __iter__(self):
 
-        from paderbox.utils.lazy_parallel_map import lazy_parallel_map
+        from paderbox.utils.parallel_utils import lazy_parallel_map
 
         if (
                 self.catch_filter_exception is False
@@ -792,6 +792,12 @@ class PrefetchIterator(BaseIterator):
                     pass
                 else:
                     yield data
+
+    def __str__(self):
+        return (
+            f'{self.__class__.__name__}'
+            f'({self.num_workers}, {self.buffer_size}, {self.backend!r})'
+        )
 
 
 class ShuffleIterator(BaseIterator):
