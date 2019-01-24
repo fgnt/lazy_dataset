@@ -939,6 +939,18 @@ class LocalShuffleIterator(BaseIterator):
 
 class SliceIterator(BaseIterator):
     def __init__(self, slice, input_iterator):
+        """
+        Should not be used directly. Simply call the iterator with brackets:
+        iterator[0:10:2]
+        iterator[slice(0, None, 2)]  # Uncommon
+
+        It allows any kind of Numpy style indexing:
+        https://docs.scipy.org/doc/numpy-1.15.1/reference/arrays.indexing.html
+
+        Args:
+            slice: Can be a slice, e.g. `slice(0, None, 2)`.
+            input_iterator:
+        """
         self._slice = slice
         try:
             self.slice = np.arange(len(input_iterator))[self._slice]
