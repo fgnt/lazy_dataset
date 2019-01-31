@@ -1704,11 +1704,20 @@ class LimitAudioLength:
 
 class Word2Id:
     def __init__(self, word2id_fn):
-        self._word2id_fn = word2id_fn
+        def _safe_word_to_id_fn(w):
+            try:
+                return word2id_fn(w)
+            except KeyError:
+                LOG.warning(f'Could not resolve ID for word {w}')
+                return
+
+        self._word2id_fn = _safe_word_to_id_fn
 
     def __call__(self, example):
         def _w2id(s):
-            return np.array([self._word2id_fn(w) for w in s.split()], np.int32)
+            return np.array(
+                [self._word2id_fn(w) for w in s.split() if self._word2id_fn(w)],
+                np.int32)
 
         if not (keys.TRANSCRIPTION in example or
                 keys.KALDI_TRANSCRIPTION in example):
