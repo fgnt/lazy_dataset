@@ -275,7 +275,7 @@ class DictDatabase:
         return lengths
 
     def add_num_samples(self, example):
-        if keys.NUM_SAMPLES in example:
+        if NUM_SAMPLES in example:
             return example
         else:
             raise NotImplementedError
