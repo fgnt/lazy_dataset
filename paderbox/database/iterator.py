@@ -80,6 +80,12 @@ import collections
 
 
 class FilterException(Exception):
+    """
+    Special Exception for the Iterator to indicate that this example should be
+    skipped. The `BaseIterator.catch()` and
+    `BaseIterator.prefetch(..., catch_filter_exception=True)` handle this
+    exception.
+    """
     pass
 
 
