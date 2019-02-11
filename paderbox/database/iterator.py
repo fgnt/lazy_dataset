@@ -1555,16 +1555,36 @@ class AlignmentReader:
         self._map_fn = example_id_map_fn
         self._dst_key = dst_key
 
-    def __call__(self, example):
+    @cached_property
+    def alignments(self):
         if self._alignments is None:
-            self._alignments = \
-                kaldi.alignment.import_alignment_data(self._ali_path)
+            self._alignments =  kaldi.alignment.import_alignment_data(
+                self._ali_path
+            )
             LOG.debug(
                 f'Read {len(self._alignments)} alignments '
                 f'from path {self._ali_path}'
             )
+        return self._alignments
+
+    def filter_fn(self, example):
+        """
+        Indicate it there are alignments for an example.
+
+        Usage:
+            it = it.filter(alignment_reader.filter_fn, lazy=False)
+        """
+        value = self._map_fn(example) in self.alignments
+        if not value:
+            LOG.warning(
+                f'No alignment found for example id {example[keys.EXAMPLE_ID]}'
+                f' (mapped: {self._map_fn(example)}).'
+            )
+        return value
+
+    def __call__(self, example):
         try:
-            example[self._dst_key] = self._alignments[
+            example[self._dst_key] = self.alignments[
                 self._map_fn(example)
             ]
             example[keys.NUM_ALIGNMENT_FRAMES] = len(example[self._dst_key])
