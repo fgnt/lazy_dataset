@@ -68,6 +68,7 @@ from pathlib import Path
 import itertools
 import random as rnd
 
+from cached_property import cached_property
 import numpy as np
 
 from paderbox import kaldi
