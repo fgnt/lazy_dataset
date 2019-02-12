@@ -462,8 +462,12 @@ class HybridASRDatabaseTemplate:
             return self.hclg_path_ffr
 
     @property
-    def lang_path(self):
+    def egs_path(self):
         raise NotImplementedError
+
+    @property
+    def lang_path(self):
+        return self.egs_path / 'data' / 'lang'
 
     @property
     def hclg_path_ffr(self):
