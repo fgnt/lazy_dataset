@@ -1239,12 +1239,12 @@ class FragmentIterator(BaseIterator):
     Fragments each example from an input_iterator into multiple new examples.
     E.g. use channels as single examples or split each example into segments
     """
-    def __init__(self, fragment_fn, input_generator):
+    def __init__(self, fragment_fn, input_iterator):
         self.fragment_fn = fragment_fn
-        self.input_generator = input_generator
+        self.input_iterator = input_iterator
 
     def __iter__(self):
-        for example in self.input_generator():
+        for example in self.input_iterator:
             for fragment in self.fragment_fn(example):
                 yield fragment
 
