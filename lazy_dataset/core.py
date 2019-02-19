@@ -82,21 +82,21 @@ import collections
 
 class FilterException(Exception):
     """
-    Special Exception for the Iterator to indicate that this example should be
-    skipped. The `BaseIterator.catch()` and
-    `BaseIterator.prefetch(..., catch_filter_exception=True)` handle this
+    Special Exception for the Dataset to indicate that this example should be
+    skipped. The `Dataset.catch()` and
+    `Dataset.prefetch(..., catch_filter_exception=True)` handle this
     exception.
     """
     pass
 
 
-class BaseIterator:
+class Dataset:
     def __call__(self):
         """
         Usecase
-          tf.data.Dataset.from_generator(iterator)
+          tf.data.Dataset.from_generator(dataset)
         Without __call__:
-          tf.data.Dataset.from_generator(lambda: iterator)
+          tf.data.Dataset.from_generator(lambda: dataset)
         """
         return self.__iter__()
 
@@ -108,7 +108,7 @@ class BaseIterator:
 
     def __len__(self):
         # The correct exception type is TypeError and not NotImplementedError
-        # for __len__. For example len(iterator) ignores TypeError but not
+        # for __len__. For example len(dataset) ignores TypeError but not
         # NotImplementedError
         raise TypeError(
             f'__len__ is not implemented for {self.__class__}.\n'
@@ -117,9 +117,9 @@ class BaseIterator:
 
     def __getitem__(self, item):
         if isinstance(item, (slice, tuple, list)):
-            return SliceIterator(item, self)
+            return SliceDataset(item, self)
         elif isinstance(item, np.ndarray) and item.ndim == 1:
-            return SliceIterator(item, self)
+            return SliceDataset(item, self)
         elif isinstance(item, bytes):
             raise NotImplementedError(
                 f'This is not implemented for an bytes objext. Use bytes.decode() to convert it to an str.\n'
@@ -142,17 +142,17 @@ class BaseIterator:
     def items(self):
         """
         >>> examples = {'a': {'d': 1}, 'b': {'e': 1}, 'c': {'f': 1}}
-        >>> it = ExamplesIterator(examples)
+        >>> it = DictDataset(examples)
         >>> list(it)
         [{'d': 1}, {'e': 1}, {'f': 1}]
         >>> list(it.items())
         [('a', {'d': 1}), ('b', {'e': 1}), ('c', {'f': 1})]
         """
-        it = ExamplesIterator(dict(zip(self.keys(), self.keys())))
+        it = DictDataset(dict(zip(self.keys(), self.keys())))
         return it.zip(self)
 
     def __contains__(self, item):
-        # contains is not well defined for iterator, because iterator is a
+        # contains is not well defined for dataset, because dataset is a
         # mixture of tuple and dict. (tuple -> value, dict -> key)
         # Use the verbose contains (see exception msg)
         raise Exception(
@@ -162,28 +162,28 @@ class BaseIterator:
     def map(self, map_fn, num_workers=0, buffer_size=100, backend='t'):
         """
         :param map_fn: function to transform an example dict. Takes an example
-            dict as provided by this iterator and returns a transformed
+            dict as provided by this dataset and returns a transformed
             example dict, e.g. read and adss the observed audio signals.
         :param num_workers:
         :param buffer_size:
-        :return: MapIterator returning mapped examples. This can e.g. be
+        :return: MapDataset returning mapped examples. This can e.g. be
         used to read and add audio to the example dict (see read_audio method).
 
         Note:
           - map_fn can do inplace transformations without using copy.
-            The ExampleIterator makes a deepcopy of each example and prevents a
+            The ExampleDataset makes a deepcopy of each example and prevents a
             modification of the root example.
           - If num_workers > 0 that the map_fn is performed in parallel.
-            But the input iterator is still executed serial.
-            This allows an arbitrary input iterator. When it is desired to get
-            an example in parallel, use prefetch on an indexable iterator.
+            But the input dataset is still executed serial.
+            This allows an arbitrary input dataset. When it is desired to get
+            an example in parallel, use prefetch on an indexable dataset.
         """
         if num_workers > 0:
-            return ParMapIterator(
+            return ParMapDataset(
                 map_fn, self, num_workers=num_workers, buffer_size=buffer_size,
                 backend=backend
             )
-        return MapIterator(map_fn, self)
+        return MapDataset(map_fn, self)
 
     def prefetch(self, num_workers, buffer_size, backend='t', catch_filter_exception=None):
         """
@@ -196,7 +196,7 @@ class BaseIterator:
 
         >>> import string
         >>> ascii = string.ascii_lowercase
-        >>> it = ExamplesIterator({k: v for v, k in enumerate(ascii[:10])})
+        >>> it = DictDataset({k: v for v, k in enumerate(ascii[:10])})
         >>> # ds1 = ds1.items().map(lambda x: {'example_id': x[0], **x[1]})
         >>> list(it)
         [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -225,8 +225,8 @@ class BaseIterator:
         0
 
         """
-        return PrefetchIterator(
-            input_iterator=self,
+        return PrefetchDataset(
+            input_dataset=self,
             num_workers=num_workers,
             buffer_size=buffer_size,
             backend=backend,
@@ -246,22 +246,22 @@ class BaseIterator:
 
         :param filter_fn: function to filter examples, takes example as input
             and returns True if example should be kept, else False.
-        :param lazy: If True, iterator does not support `len(it)` anymore but
-            computation is performed once the iterator visits the item.
-        :return: FilterIterator iterating over filtered examples.
+        :param lazy: If True, dataset does not support `len(it)` anymore but
+            computation is performed once the dataset visits the item.
+        :return: FilterDataset iterating over filtered examples.
         """
         if lazy:
-            # Input iterator can be indexable, but this is not needed.
+            # Input dataset can be indexable, but this is not needed.
             # Output still does not have `len` and is not indexable.
-            return FilterIterator(filter_fn, self)
+            return FilterDataset(filter_fn, self)
         else:
-            # Input iterator needs to be indexable.
+            # Input dataset needs to be indexable.
             # Output still has `len`, following line should not raise errors.
             try:
                 _ = self.keys()
             except Exception:
                 raise RuntimeError(
-                    'You can only use lazy=False if the incoming iterator is '
+                    'You can only use lazy=False if the incoming dataset is '
                     'indexable.'
                 )
             return self[[i for i, e in enumerate(self) if filter_fn(e)]]
@@ -277,17 +277,17 @@ class BaseIterator:
 
         Returns:
         """
-        return CatchExceptionIterator(self, exceptions=exceptions, warn=warn)
+        return CatchExceptionDataset(self, exceptions=exceptions, warn=warn)
 
     def concatenate(self, *others):
         """
-        Concatenate this iterator with others. keys need to be unambiguous.
-        :param others: list of other iterators to be concatenated
-        :return: ExamplesIterator iterating over all examples.
+        Concatenate this dataset with others. keys need to be unambiguous.
+        :param others: list of other datasets to be concatenated
+        :return: ExamplesDataset iterating over all examples.
         """
         if len(others) == 0:
             return self
-        return ConcatenateIterator(self, *others)
+        return ConcatenateDataset(self, *others)
 
     def zip(self, *others):
         """
@@ -303,9 +303,9 @@ class BaseIterator:
         This function is usually followed by a map call to merge the tuple of
         dicts to a single dict.
 
-        >>> ds1 = ExamplesIterator({'a': {'z': 1}, 'b': {'z': 2}})
+        >>> ds1 = DictDataset({'a': {'z': 1}, 'b': {'z': 2}})
         >>> ds1 = ds1.items().map(lambda x: {'example_id': x[0], **x[1]})
-        >>> ds2 = ExamplesIterator({'a': {'y': 'c'}, 'b': {'y': 'd', 'z': 3}})
+        >>> ds2 = DictDataset({'a': {'y': 'c'}, 'b': {'y': 'd', 'z': 3}})
         >>> ds2 = ds2.items().map(lambda x: {'example_id': x[0], **x[1]})
         >>> ds3 = ds1.zip(ds2)
         >>> for e in ds3: print(e)
@@ -315,16 +315,16 @@ class BaseIterator:
         # Merge the dicts, when conflict, prefer the second
         >>> ds4 = ds3.map(lambda example: {**example[0], **example[1]})
         >>> ds4  # doctest: +ELLIPSIS
-                ExamplesIterator(len=2)
-                ExamplesIterator(len=2)
-              ZipIterator()
-            MapIterator(<function <lambda> at 0x...>)
-                ExamplesIterator(len=2)
-                ExamplesIterator(len=2)
-              ZipIterator()
-            MapIterator(<function <lambda> at 0x...>)
-          ZipIterator()
-        MapIterator(<function <lambda> at 0x...>)
+                ExamplesDataset(len=2)
+                ExamplesDataset(len=2)
+              ZipDataset()
+            MapDataset(<function <lambda> at 0x...>)
+                ExamplesDataset(len=2)
+                ExamplesDataset(len=2)
+              ZipDataset()
+            MapDataset(<function <lambda> at 0x...>)
+          ZipDataset()
+        MapDataset(<function <lambda> at 0x...>)
         >>> for e in ds4: print(e)
         {'example_id': 'a', 'z': 1, 'y': 'c'}
         {'example_id': 'b', 'z': 3, 'y': 'd'}
@@ -335,14 +335,14 @@ class BaseIterator:
         {'example_id': 'a', 'z': 1, 'y': 'c'}
         {'example_id': 'b', 'z': 3, 'y': 'd'}
 
-        :param others: list of other iterators to be zipped
-        :return: Iterator
+        :param others: list of other datasets to be zipped
+        :return: Dataset
         """
-        return ZipIterator(self, *others)
+        return ZipDataset(self, *others)
 
     def shuffle(self, reshuffle=False, rng=None, buffer_size=None):
         """
-        Shuffle this iterator.
+        Shuffle this dataset.
         :param reshuffle:
             If True, shuffle on each iteration, but disable indexing.
             If False, single shuffle, but support indexing.
@@ -352,58 +352,58 @@ class BaseIterator:
 
         Note:
          - Use the buffer_size only in special cases were the dataset is
-           already shuffled. For example a iterator is shuffled and then a
+           already shuffled. For example a dataset is shuffled and then a
            fragment call splits on into multiple examples. In this case a local
            shuffle (i.e. buffer_size > 0) is reasonable.
 
         """
         # Should reshuffle default be True or False
         if buffer_size is not None:
-            assert reshuffle is True, 'LocalShuffleIterator only supports reshuffle'
-            assert rng is None, 'LocalShuffleIterator does not support seeds.'
-            return LocalShuffleIterator(self, buffer_size=buffer_size)
+            assert reshuffle is True, 'LocalShuffleDataset only supports reshuffle'
+            assert rng is None, 'LocalShuffleDataset does not support seeds.'
+            return LocalShuffleDataset(self, buffer_size=buffer_size)
         if reshuffle is True:
-            assert rng is None, 'ReShuffleIterator does not support seeds.'
-            return ReShuffleIterator(self)
+            assert rng is None, 'ReShuffleDataset does not support seeds.'
+            return ReShuffleDataset(self)
         elif reshuffle is False:
-            return ShuffleIterator(self, rng=rng)
+            return ShuffleDataset(self, rng=rng)
         else:
             raise ValueError(reshuffle, self)
 
     def tile(self, reps, shuffle=False):
         """
-        Constructs an new iterator by repeating the iterator the number of
+        Constructs an new dataset by repeating the dataset the number of
         times given by reps.
 
         The shuffle option if provided, because before concatenating the
         shuffle is applied.
 
         """
-        iterators = [self] * reps
+        datasets = [self] * reps
         if shuffle:
-            iterators = [
+            datasets = [
                 it.shuffle()
-                for it in iterators
+                for it in datasets
             ]
-        return self.__class__.concatenate(*iterators)
+        return self.__class__.concatenate(*datasets)
 
     def groupby(self, group_fn):
         """
         >>> from IPython.lib.pretty import pprint
         >>> examples = {'a': {'z': 1}, 'b': {'z': 2}, 'c': {'z': 1}, 'd': {'z': 1}, 'e': {'z': 3}}
-        >>> it = ExamplesIterator(examples)
+        >>> it = DictDataset(examples)
         >>> for k, v in it.groupby(lambda ex: ex['z']).items():
         ...     print(f'{k}:', list(v), v.keys())
         ...     print(f'{v!r}')
         1: [{'z': 1}, {'z': 1}, {'z': 1}] ('a', 'c', 'd')
-          ExamplesIterator(len=5)
-        SliceIterator([0, 2, 3])
+          ExamplesDataset(len=5)
+        SliceDataset([0, 2, 3])
         2: [{'z': 2}] ('b',)
-          ExamplesIterator(len=5)
-        SliceIterator([1])
+          ExamplesDataset(len=5)
+        SliceDataset([1])
         3: [{'z': 3}] ('e',)
-          ExamplesIterator(len=5)
-        SliceIterator([4])
+          ExamplesDataset(len=5)
+        SliceDataset([4])
         """
         iterable = enumerate(list(self.map(group_fn)))
         groups = collections.defaultdict(list)
@@ -415,7 +415,7 @@ class BaseIterator:
     def split(self, sections):
         """
         >>> examples = {'a': {}, 'b': {}, 'c': {}, 'd': {}, 'e': {}}
-        >>> it = ExamplesIterator(examples)
+        >>> it = DictDataset(examples)
         >>> it = it.items().map(lambda x: {'example_id': x[0], **x[1]})
         >>> its = it.split(2)
         >>> list(its[0])
@@ -428,7 +428,7 @@ class BaseIterator:
             raise ValueError("sections must be >= 1")
         if sections > len(self):
             raise ValueError(
-                f'Iterator has only {len(self)} elements and cannot be '
+                f'Dataset has only {len(self)} elements and cannot be '
                 f'split into {sections} sections.'
             )
         slices = np.array_split(np.arange(len(self)), sections)
@@ -440,23 +440,23 @@ class BaseIterator:
         E.g. use channels as single examples or split each example into segments
 
         >>> examples = {'a': [1, 2], 'b': [3, 4]}
-        >>> it = ExamplesIterator(examples)
+        >>> it = DictDataset(examples)
         >>> list(it)
         [[1, 2], [3, 4]]
         >>> list(it.fragment(lambda ex: ex))
         [1, 2, 3, 4]
         """
-        return FragmentIterator(fragment_fn, self)
+        return FragmentDataset(fragment_fn, self)
 
     def sort(self, key_fn, sort_fn=sorted):
         """
-        Sorts the iterator with the entry described by key_list
+        Sorts the dataset with the entry described by key_list
         >>> examples = {'a': {'x': 1}, 'b': {'x': 3},  'c': {'x': 12}, 'd': {'x': 2}}
-        >>> it = ExamplesIterator(examples)
+        >>> it = DictDataset(examples)
         >>> it_sorted = it.sort(lambda ex: ex['x'])
         >>> it_sorted
-          ExamplesIterator(len=4)
-        SliceIterator(('a', 'd', 'b', 'c'))
+          ExamplesDataset(len=4)
+        SliceDataset(('a', 'd', 'b', 'c'))
         >>> print(it_sorted.slice)
         (0, 3, 1, 2)
         >>> list(it_sorted)
@@ -468,7 +468,7 @@ class BaseIterator:
 
     def shard(self, num_shards, shard_index):
         """
-        Splits an iterator into `num_shards` shards and
+        Splits an dataset into `num_shards` shards and
         selects shard `shard_index`.
         """
         return self.split(num_shards)[shard_index]
@@ -479,7 +479,7 @@ class BaseIterator:
         :param drop_last:
         :return:
         """
-        return BatchIterator(self, batch_size, drop_last)
+        return BatchDataset(self, batch_size, drop_last)
 
     def __str__(self):
         return f'{self.__class__.__name__}()'
@@ -490,12 +490,12 @@ class BaseIterator:
         import textwrap
         r = ''
         indent = '  '
-        if hasattr(self, 'input_iterator'):
-            s = repr(self.input_iterator)
+        if hasattr(self, 'input_dataset'):
+            s = repr(self.input_dataset)
             r += textwrap.indent(s, indent) + '\n'
-        if hasattr(self, 'input_iterators'):
-            for input_iterator in self.input_iterators:
-                s = repr(input_iterator)
+        if hasattr(self, 'input_datasets'):
+            for input_dataset in self.input_datasets:
+                s = repr(input_dataset)
                 r += textwrap.indent(s, indent) + '\n'
         return r + str(self)
 
@@ -508,7 +508,7 @@ class BaseIterator:
         """
         >>> rng_state = np.random.RandomState(0)
         >>> examples = {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
-        >>> it = ExamplesIterator(examples)
+        >>> it = DictDataset(examples)
         >>> def foo(ex):
         ...     print('foo')
         ...     return ex
@@ -518,12 +518,12 @@ class BaseIterator:
         Number 3
 
         >>> print(it.random_choice(1, rng_state=rng_state))
-        SliceIterator([0])
+        SliceDataset([0])
         >>> print(it.random_choice(2, rng_state=rng_state))
-        SliceIterator([1 3])
+        SliceDataset([1 3])
         >>> it_choice = it.random_choice(7, rng_state=rng_state, replace=True)
         >>> print(it_choice)
-        SliceIterator([0 4 2 1 0 1 1])
+        SliceDataset([0 4 2 1 0 1 1])
         >>> print(list(it_choice))
         foo
         foo
@@ -538,7 +538,7 @@ class BaseIterator:
         return self[i]
 
     def apply(self, apply_fn: callable):
-        """Allows to apply functions to the complete iterator, not to the
+        """Allows to apply functions to the complete dataset, not to the
         examples itself.
 
         Args:
@@ -557,9 +557,9 @@ class BaseIterator:
             return apply_fn(self)
 
 
-class ExamplesIterator(BaseIterator):
+class DictDataset(Dataset):
     """
-    Iterator to iterate over a list of examples with each example being a dict
+    Dataset to iterate over a list of examples with each example being a dict
     according to the json structure as outline in the top of this file.
     """
 
@@ -604,53 +604,53 @@ class ExamplesIterator(BaseIterator):
         return len(self.examples)
 
 
-class MapIterator(BaseIterator):
+class MapDataset(Dataset):
     """
-    Iterator that iterates over an input_iterator and applies a transformation
+    Dataset that iterates over an input_dataset and applies a transformation
     map_function to each element.
 
     """
 
-    def __init__(self, map_function, input_iterator):
+    def __init__(self, map_function, input_dataset):
         """
 
         :param map_function: function that transforms an element of
-            input_iterator. Use deepcopy within the map_function if necessary.
-        :param input_iterator: any iterator (e.g. ExampleIterator)
+            input_dataset. Use deepcopy within the map_function if necessary.
+        :param input_dataset: any dataset (e.g. ExampleDataset)
         """
         assert callable(map_function), map_function
         self.map_function = map_function
-        self.input_iterator = input_iterator
+        self.input_dataset = input_dataset
 
     def __str__(self):
         return f'{self.__class__.__name__}({self.map_function})'
 
     def __len__(self):
-        return len(self.input_iterator)
+        return len(self.input_dataset)
 
     def __iter__(self):
-        for example in self.input_iterator:
+        for example in self.input_dataset:
             yield self.map_function(example)
 
     def keys(self):
-        return self.input_iterator.keys()
+        return self.input_dataset.keys()
 
     def __getitem__(self, item):
         if isinstance(item, (str, numbers.Integral)):
-            return self.map_function(self.input_iterator[item])
+            return self.map_function(self.input_dataset[item])
         else:
             return super().__getitem__(item)
 
 
-class ParMapIterator(MapIterator):
+class ParMapDataset(MapDataset):
     """
-    Should this iterator support getitem? Getitem disables the buffer.
+    Should this dataset support getitem? Getitem disables the buffer.
     """
     def __init__(
-            self, map_function, input_iterator, num_workers, buffer_size,
+            self, map_function, input_dataset, num_workers, buffer_size,
             backend='t'
     ):
-        super().__init__(map_function, input_iterator)
+        super().__init__(map_function, input_dataset)
         assert num_workers >= 1
         self.num_workers = num_workers
         self.buffer_size = buffer_size
@@ -662,16 +662,16 @@ class ParMapIterator(MapIterator):
 
         return lazy_parallel_map(
             self.map_function,
-            self.input_iterator,
+            self.input_dataset,
             buffer_size=self.buffer_size,
             max_workers=self.num_workers,
             backend=self.backend,
         )
 
 
-class CatchExceptionIterator(BaseIterator):
+class CatchExceptionDataset(Dataset):
     """
-    >>> it = ExamplesIterator({'a': 1, 'b': 2, 'c': 3})
+    >>> it = DictDataset({'a': 1, 'b': 2, 'c': 3})
     >>> list(it)
     [1, 2, 3]
     >>> def foo(integer):
@@ -682,32 +682,32 @@ class CatchExceptionIterator(BaseIterator):
     >>> list(it.map(foo))
     Traceback (most recent call last):
     ...
-    iterator.FilterException: Exception msg
+    dataset.FilterException: Exception msg
     >>> list(it.map(foo).catch())
     [1, 3]
     >>> it.map(foo).catch()[0]  # doctest: +ELLIPSIS
     Traceback (most recent call last):
     ...
-    NotImplementedError: __getitem__ is not well defined for <class 'iterator.CatchExceptionIterator'>[0],
+    NotImplementedError: __getitem__ is not well defined for <class 'dataset.CatchExceptionDataset'>[0],
     because 0 is an index
     self:
-        ExamplesIterator(len=3)
-      MapIterator(<function foo at ...>)
-    CatchExceptionIterator()
+        ExamplesDataset(len=3)
+      MapDataset(<function foo at ...>)
+    CatchExceptionDataset()
     """
     def __init__(
             self,
-            input_iterator,
+            input_dataset,
             exceptions=FilterException,
             warn=False
     ):
-        self.input_iterator = input_iterator
+        self.input_dataset = input_dataset
         self.exceptions = exceptions
         self.warn = warn
 
     def __getitem__(self, item):
         if isinstance(item, (str)):
-            return self.input_iterator[item]
+            return self.input_dataset[item]
         elif isinstance(item, numbers.Integral):
             raise NotImplementedError(
                 f'__getitem__ is not well defined for '
@@ -719,37 +719,37 @@ class CatchExceptionIterator(BaseIterator):
             return super().__getitem__(item)
 
     def __iter__(self):
-        for i in range(len(self.input_iterator)):
+        for i in range(len(self.input_dataset)):
             try:
-                yield self.input_iterator[i]
+                yield self.input_dataset[i]
             except self.exceptions as e:
                 if self.warn:
                     msg = repr(e)
                     LOG.warning(msg)
 
 
-class PrefetchIterator(BaseIterator):
+class PrefetchDataset(Dataset):
     def __init__(
             self,
-            input_iterator,
+            input_dataset,
             num_workers,
             buffer_size,
             backend='t',
             catch_filter_exception=False,
     ):
 
-        # Input iterator needs to be indexable.
+        # Input dataset needs to be indexable.
         try:
-            _ = len(input_iterator)
+            _ = len(input_dataset)
         except Exception:
             raise RuntimeError(
-                'You can only use Prefetch if the incoming iterator is '
+                'You can only use Prefetch if the incoming dataset is '
                 'indexable.'
             )
         assert num_workers >= 1, num_workers
         assert buffer_size >= num_workers, (num_workers, buffer_size)
 
-        self.input_iterator = input_iterator
+        self.input_dataset = input_dataset
         self.num_workers = num_workers
         self.buffer_size = buffer_size
         self.backend = backend
@@ -768,8 +768,8 @@ class PrefetchIterator(BaseIterator):
                 )
         ):
             yield from lazy_parallel_map(
-                self.input_iterator.__getitem__,
-                range(len(self.input_iterator)),
+                self.input_dataset.__getitem__,
+                range(len(self.input_dataset)),
                 buffer_size=self.buffer_size,
                 max_workers=self.num_workers,
                 backend=self.backend,
@@ -784,13 +784,13 @@ class PrefetchIterator(BaseIterator):
 
             def catcher(index):
                 try:
-                    return self.input_iterator[index]
+                    return self.input_dataset[index]
                 except catch_filter_exception:
                     return unique_object
 
             for data in lazy_parallel_map(
                 catcher,
-                range(len(self.input_iterator)),
+                range(len(self.input_dataset)),
                 buffer_size=self.buffer_size,
                 max_workers=self.num_workers,
                 backend=self.backend,
@@ -807,89 +807,89 @@ class PrefetchIterator(BaseIterator):
         )
 
 
-class ShuffleIterator(BaseIterator):
+class ShuffleDataset(Dataset):
     """
-    Iterator that shuffles the input_iterator. Assumes, that the input_iterator
+    Dataset that shuffles the input_dataset. Assumes, that the input_dataset
     has a length.
     Note:
-        This Iterator supports indexing, but does not reshuffle each iteration.
+        This Dataset supports indexing, but does not reshuffle each iteration.
 
     >>> np.random.seed(1)
     >>> examples = {'a': {}, 'b': {}, 'c': {}}
-    >>> it = ExamplesIterator(examples)
+    >>> it = DictDataset(examples)
     >>> it = it.items().map(lambda x: {'example_id': x[0], **x[1]})
     >>> it = it.shuffle(False)
     >>> it  # doctest: +ELLIPSIS
-          ExamplesIterator(len=3)
-          ExamplesIterator(len=3)
-        ZipIterator()
-      MapIterator(<function <lambda> at 0x...>)
-    ShuffleIterator()
+          ExamplesDataset(len=3)
+          ExamplesDataset(len=3)
+        ZipDataset()
+      MapDataset(<function <lambda> at 0x...>)
+    ShuffleDataset()
     >>> list(it)
     [{'example_id': 'a'}, {'example_id': 'c'}, {'example_id': 'b'}]
     >>> it.keys()
     ('a', 'c', 'b')
     """
 
-    def __init__(self, input_iterator, rng=None):
-        self.permutation = np.arange(len(input_iterator))
+    def __init__(self, input_dataset, rng=None):
+        self.permutation = np.arange(len(input_dataset))
         rng = np.random if rng is None else rng
         rng.shuffle(self.permutation)
-        self.input_iterator = input_iterator
+        self.input_dataset = input_dataset
 
     def __len__(self):
-        return len(self.input_iterator)
+        return len(self.input_dataset)
 
     _keys = None
 
     def keys(self):
         if self._keys is None:
-            keys = self.input_iterator.keys()
+            keys = self.input_dataset.keys()
             self._keys = tuple([keys[p] for p in self.permutation])
         return self._keys
 
     def __iter__(self):
         for idx in self.permutation:
-            yield self.input_iterator[idx]
+            yield self.input_dataset[idx]
 
     def __getitem__(self, item):
         if isinstance(item, str):
-            return self.input_iterator[item]
+            return self.input_dataset[item]
         elif isinstance(item, numbers.Integral):
-            return self.input_iterator[self.permutation[item]]
+            return self.input_dataset[self.permutation[item]]
         else:
             return super().__getitem__(item)
 
 
-class ReShuffleIterator(BaseIterator):
+class ReShuffleDataset(Dataset):
     """
-    Iterator that shuffles the input_iterator. Assumes, that the input_iterator
+    Dataset that shuffles the input_dataset. Assumes, that the input_dataset
     has a length.
     Note:
-        This Iterator reshuffle each iteration, but does not support indexing.
+        This Dataset reshuffle each iteration, but does not support indexing.
     """
 
-    def __init__(self, input_iterator):
-        self.permutation = np.arange(len(input_iterator))
-        self.input_iterator = input_iterator
+    def __init__(self, input_dataset):
+        self.permutation = np.arange(len(input_dataset))
+        self.input_dataset = input_dataset
 
     def __len__(self):
-        return len(self.input_iterator)
+        return len(self.input_dataset)
 
-    # keys is not well defined for this iterator
-    # The First iterator (i.e. ExamplesIterator has sorted keys), so what should
-    # this iterator return? Maybe a frozenset to highlight unordered?
+    # keys is not well defined for this dataset
+    # The First dataset (i.e. ExamplesDataset has sorted keys), so what should
+    # this dataset return? Maybe a frozenset to highlight unordered?
     # def keys(self):
-    #     return frozenset(self.input_iterator.keys())
+    #     return frozenset(self.input_dataset.keys())
 
     def __iter__(self):
         np.random.shuffle(self.permutation)
         for idx in self.permutation:
-            yield self.input_iterator[idx]
+            yield self.input_dataset[idx]
 
     def __getitem__(self, item):
         if isinstance(item, str):
-            return self.input_iterator[item]
+            return self.input_dataset[item]
         elif isinstance(item, (numbers.Integral, slice, tuple, list)):
             raise TypeError(
                 f'{self.__class__.__name__} does not support '
@@ -900,27 +900,27 @@ class ReShuffleIterator(BaseIterator):
             return super().__getitem__(item)
 
 
-class LocalShuffleIterator(BaseIterator):
+class LocalShuffleDataset(Dataset):
     """
-    Iterator that shuffles the input_iterator locally by randomly sampling from
-    a fixed length buffer. Hence also applicable to Iterators that does not
+    Dataset that shuffles the input_dataset locally by randomly sampling from
+    a fixed length buffer. Hence also applicable to Datasets that does not
     support indexing
     Note:
-        This Iterator reshuffles each iteration, but does not support indexing.
+        This Dataset reshuffles each iteration, but does not support indexing.
     """
 
-    def __init__(self, input_iterator, buffer_size=100):
-        self.input_iterator = input_iterator
+    def __init__(self, input_dataset, buffer_size=100):
+        self.input_dataset = input_dataset
         self.buffer_size = buffer_size
 
     def __len__(self):
-        return len(self.input_iterator)
+        return len(self.input_dataset)
 
     def __iter__(self):
         buffer = list()
         print(f'Filling Shuffle Buffer with {self.buffer_size} samples.')
         buffer_filled = False
-        for element in self.input_iterator:
+        for element in self.input_dataset:
             buffer.append(element)
             if len(buffer) >= self.buffer_size:
                 if not buffer_filled:
@@ -933,7 +933,7 @@ class LocalShuffleIterator(BaseIterator):
 
     def __getitem__(self, item):
         if isinstance(item, str):
-            return self.input_iterator[item]
+            return self.input_dataset[item]
         elif isinstance(item, (numbers.Integral, slice, tuple, list)):
             raise TypeError(
                 f'{self.__class__.__name__} does not support '
@@ -944,40 +944,40 @@ class LocalShuffleIterator(BaseIterator):
             return super().__getitem__(item)
 
 
-class SliceIterator(BaseIterator):
-    def __init__(self, slice, input_iterator):
+class SliceDataset(Dataset):
+    def __init__(self, slice, input_dataset):
         """
-        Should not be used directly. Simply call the iterator with brackets:
-        iterator[0:10:2]
-        iterator[slice(0, None, 2)]  # Uncommon
+        Should not be used directly. Simply call the dataset with brackets:
+        dataset[0:10:2]
+        dataset[slice(0, None, 2)]  # Uncommon
 
         It allows any kind of Numpy style indexing:
         https://docs.scipy.org/doc/numpy-1.15.1/reference/arrays.indexing.html
 
         Args:
             slice: Can be a slice, e.g. `slice(0, None, 2)`.
-            input_iterator:
+            input_dataset:
         """
         self._slice = slice
         try:
-            self.slice = np.arange(len(input_iterator))[self._slice]
+            self.slice = np.arange(len(input_dataset))[self._slice]
         except IndexError:
             if isinstance(slice, (tuple, list)) and isinstance(slice[0], str):
                 # Assume sequence of str
-                keys = {k: i for i, k in enumerate(input_iterator.keys())}
+                keys = {k: i for i, k in enumerate(input_dataset.keys())}
                 self.slice = operator.itemgetter(*slice)(keys)
                 if len(slice) == 1:
                     self.slice = (self.slice,)
             else:
                 raise
 
-        self.input_iterator = input_iterator
+        self.input_dataset = input_dataset
 
     _keys = None
 
     def keys(self):
         if self._keys is None:
-            keys = self.input_iterator.keys()
+            keys = self.input_dataset.keys()
             # itemgetter makes the same as
             # "tuple([keys[i] for i in self.slice])"
             # but is 10 times faster
@@ -1002,39 +1002,39 @@ class SliceIterator(BaseIterator):
 
     def __iter__(self):
         for idx in self.slice:
-            yield self.input_iterator[idx]
+            yield self.input_dataset[idx]
 
     def __getitem__(self, key):
         if isinstance(key, str):
-            return self.input_iterator[key]
+            return self.input_dataset[key]
         elif isinstance(key, numbers.Integral):
-            return self.input_iterator[self.slice[key]]
+            return self.input_dataset[self.slice[key]]
         else:
             return super().__getitem__(key)
 
 
-class FilterIterator(BaseIterator):
+class FilterDataset(Dataset):
     """
-    Iterator that iterates only over those elements of input_iterator that meet
+    Dataset that iterates only over those elements of input_dataset that meet
     filter_function.
     """
 
-    def __init__(self, filter_function, input_iterator):
+    def __init__(self, filter_function, input_dataset):
         """
 
         :param filter_function: a function that takes an element of the input
-            iterator and returns True if the element is valid else False.
-        :param input_iterator: any iterator (e.g. ExampleIterator)
+            dataset and returns True if the element is valid else False.
+        :param input_dataset: any dataset (e.g. ExampleDataset)
         """
         assert callable(filter_function), filter_function
         self.filter_function = filter_function
-        self.input_iterator = input_iterator
+        self.input_dataset = input_dataset
 
     def __str__(self):
         return f'{self.__class__.__name__}({self.filter_function})'
 
     def __iter__(self):
-        for example in self.input_iterator:
+        for example in self.input_dataset:
             if self.filter_function(example):
                 yield example
 
@@ -1045,41 +1045,41 @@ class FilterIterator(BaseIterator):
             f'Only type str is allowed.\n'
             f'self:\n{repr(self)}'
         )
-        ex = self.input_iterator[key]
+        ex = self.input_dataset[key]
         if not self.filter_function(ex):
             raise IndexError(key)
         return ex
 
 
-class ConcatenateIterator(BaseIterator):
+class ConcatenateDataset(Dataset):
     """
-    Iterates over all elements of all input_iterators.
+    Iterates over all elements of all input_datasets.
     Best use is to concatenate cross validation or evaluation datasets.
     It does not work well with buffer based shuffle (i.e. in Tensorflow).
 
     Here, __getitem__ for str is not possible per definition when IDs collide.
     """
 
-    def __init__(self, *input_iterators):
+    def __init__(self, *input_datasets):
         """
-        :param input_iterators: list of iterators
+        :param input_datasets: list of datasets
         """
-        self.input_iterators = input_iterators
+        self.input_datasets = input_datasets
 
     def __iter__(self):
-        for input_iterator in self.input_iterators:
-            for example in input_iterator:
+        for input_dataset in self.input_datasets:
+            for example in input_dataset:
                 yield example
 
     def __len__(self):
-        return sum([len(i) for i in self.input_iterators])
+        return sum([len(i) for i in self.input_datasets])
 
     _keys = None
 
     def keys(self):
         """
         >>> examples = {'a': 1, 'b': 2, 'c': 3}
-        >>> it = ExamplesIterator(examples)
+        >>> it = DictDataset(examples)
         >>> it.concatenate(it).keys()
         Traceback (most recent call last):
         ...
@@ -1090,8 +1090,8 @@ class ConcatenateIterator(BaseIterator):
         """
         if self._keys is None:
             keys = []
-            for iterator in self.input_iterators:
-                keys += list(iterator.keys())
+            for dataset in self.input_datasets:
+                keys += list(dataset.keys())
             if len(keys) != len(set(keys)):
                 duplicates = [
                     item  # https://stackoverflow.com/a/9835819/5766934
@@ -1115,9 +1115,9 @@ class ConcatenateIterator(BaseIterator):
 
     def __getitem__(self, item):
         """
-        >>> it1 = ExamplesIterator({'a': {}, 'b': {}})
+        >>> it1 = DictDataset({'a': {}, 'b': {}})
         >>> it1 = it1.items().map(lambda x: {'example_id': x[0], **x[1]})
-        >>> it2 = ExamplesIterator({'c': {}, 'd': {}})
+        >>> it2 = DictDataset({'c': {}, 'd': {}})
         >>> it2 = it2.items().map(lambda x: {'example_id': x[0], **x[1]})
         >>> it = it1.concatenate(it2)
         >>> it['a']
@@ -1126,27 +1126,27 @@ class ConcatenateIterator(BaseIterator):
         {'example_id': 'c'}
         """
         if isinstance(item, numbers.Integral):
-            for iterator in self.input_iterators:
-                if len(iterator) <= item:
-                    item -= len(iterator)
+            for dataset in self.input_datasets:
+                if len(dataset) <= item:
+                    item -= len(dataset)
                 else:
-                    return iterator[item]
+                    return dataset[item]
             raise KeyError(item)
         elif isinstance(item, str):
             self.keys()  # test unique keys
-            for iterator in self.input_iterators:
-                if item in iterator.keys():
-                    return iterator[item]
+            for dataset in self.input_datasets:
+                if item in dataset.keys():
+                    return dataset[item]
             # In collections.ChainMap is
             # 'try: ... except KeyError: ...'
-            # used, since an iterator should provide a better exception msg,
+            # used, since an dataset should provide a better exception msg,
             # __contains__ is faster than collections.ChainMap
             # because the overhead of calculating the exception msg is to high.
 
             if item in self.keys():
                 raise Exception(
                     f'There is a internal error in {self.__class__}. '
-                    f'Could not find {item} in input iterators, but it is in '
+                    f'Could not find {item} in input datasets, but it is in '
                     f'{self.keys()}'
                 )
             raise KeyError(item)
@@ -1154,52 +1154,52 @@ class ConcatenateIterator(BaseIterator):
             return super().__getitem__(item)
 
 
-class ZipIterator(BaseIterator):
+class ZipDataset(Dataset):
     """
-    See BaseIterator.zip
+    See Dataset.zip
     """
 
-    def __init__(self, *input_iterators):
+    def __init__(self, *input_datasets):
         """
-        :param input_iterators: list of iterators
+        :param input_datasets: list of datasets
         """
-        self.input_iterators = input_iterators
-        assert len(self.input_iterators) >= 1, \
-            'You have to provide at least one iterator.' \
-            f'\n{self.input_iterators}'
-        assert len(self.input_iterators) >= 2, \
-            'Currently limited to at least two iterator. Could be removed.' \
-            f'\n{self.input_iterators}'
-        lengths = [len(it) for it in self.input_iterators]
-        keys = set(self.input_iterators[0].keys())
+        self.input_datasets = input_datasets
+        assert len(self.input_datasets) >= 1, \
+            'You have to provide at least one dataset.' \
+            f'\n{self.input_datasets}'
+        assert len(self.input_datasets) >= 2, \
+            'Currently limited to at least two dataset. Could be removed.' \
+            f'\n{self.input_datasets}'
+        lengths = [len(it) for it in self.input_datasets]
+        keys = set(self.input_datasets[0].keys())
         lengths = [
-            len(keys - set(it.keys())) for it in self.input_iterators
+            len(keys - set(it.keys())) for it in self.input_datasets
         ]
         if set(lengths) != {0}:
             missing_keys = [
-                keys - set(it.keys()) for it in self.input_iterators
+                keys - set(it.keys()) for it in self.input_datasets
             ]
             raise AssertionError(
-                f'Expect that all input_iterators have at least the same keys as ' \
+                f'Expect that all input_datasets have at least the same keys as ' \
                 f'the first. To much keys: {missing_keys}' \
-                f'\n{self.input_iterators}'
+                f'\n{self.input_datasets}'
             )
 
     def __iter__(self):
         for key in self.keys():
             yield tuple([
                 it[key]
-                for it in self.input_iterators
+                for it in self.input_datasets
             ])
 
     def __len__(self):
-        return len(self.input_iterators[0])
+        return len(self.input_datasets[0])
 
     _keys = None
 
     def keys(self):
         if self._keys is None:
-            self._keys = self.input_iterators[0].keys()
+            self._keys = self.input_datasets[0].keys()
         return self._keys
 
     def __getitem__(self, item):
@@ -1208,58 +1208,38 @@ class ZipIterator(BaseIterator):
         if isinstance(item, str):
             return tuple([
                 it[item]
-                for it in self.input_iterators
+                for it in self.input_datasets
             ])
         else:
             return super().__getitem__(item)
 
 
-class MixIterator(BaseIterator):
+class FragmentDataset(Dataset):
     """
-    Provide
-    """
-
-    def __init__(self, *input_iterators, p=None):
-        """
-        :param input_iterators:
-        :param p: Probabilities for each iterator. Equal probability if None.
-        """
-        count = len(input_iterators)
-        if p is None:
-            self.p = np.full((count,), 1 / count)
-        else:
-            assert count == len(p), f'{count} != {len(p)}'
-
-    def __iter__(self):
-        raise NotImplementedError
-
-
-class FragmentIterator(BaseIterator):
-    """
-    Fragments each example from an input_iterator into multiple new examples.
+    Fragments each example from an input_dataset into multiple new examples.
     E.g. use channels as single examples or split each example into segments
     """
-    def __init__(self, fragment_fn, input_iterator):
+    def __init__(self, fragment_fn, input_dataset):
         self.fragment_fn = fragment_fn
-        self.input_iterator = input_iterator
+        self.input_dataset = input_dataset
 
     def __iter__(self):
-        for example in self.input_iterator:
+        for example in self.input_dataset:
             for fragment in self.fragment_fn(example):
                 yield fragment
 
 
-class BatchIterator(BaseIterator):
+class BatchDataset(Dataset):
     """
 
-    >>> from paderbox.database.iterator import ExamplesIterator
+    >>> from paderbox.database.dataset import ExamplesDataset
     >>> import string
     >>> examples = {c: i for i, c in enumerate(string.ascii_letters[:7])}
-    >>> it = ExamplesIterator(examples)
+    >>> it = DictDataset(examples)
     >>> it = it.batch(3)
     >>> it
-      ExamplesIterator(len=7)
-    BatchIterator(batch_size=3)
+      ExamplesDataset(len=7)
+    BatchDataset(batch_size=3)
     >>> list(it), len(it)
     ([[0, 1, 2], [3, 4, 5], [6]], 3)
     >>> it[2], it[-1]
@@ -1268,13 +1248,13 @@ class BatchIterator(BaseIterator):
     Traceback (most recent call last):
     ...
     IndexError: tuple index out of range
-    >>> it = ExamplesIterator(examples)
+    >>> it = DictDataset(examples)
     >>> it = it.batch(3, drop_last=True)
     >>> list(it), len(it)
     ([[0, 1, 2], [3, 4, 5]], 2)
     >>> it[-1]
     [3, 4, 5]
-    >>> it = ExamplesIterator(examples)[:6]
+    >>> it = DictDataset(examples)[:6]
     >>> it = it.batch(3)
     >>> list(it), len(it)
     ([[0, 1, 2], [3, 4, 5]], 2)
@@ -1283,16 +1263,16 @@ class BatchIterator(BaseIterator):
     >>> it['abc']
     Traceback (most recent call last):
     ...
-    NotImplementedError: __getitem__ is not implemented for <class 'nt.database.iterator.BatchIterator'>['abc'],
+    NotImplementedError: __getitem__ is not implemented for <class 'nt.database.dataset.BatchDataset'>['abc'],
     where type('abc') == <class 'str'>
     self:
-        ExamplesIterator(len=7)
-      SliceIterator(slice(None, 6, None))
-    BatchIterator(batch_size=3)
+        ExamplesDataset(len=7)
+      SliceDataset(slice(None, 6, None))
+    BatchDataset(batch_size=3)
 
     """
-    def __init__(self, input_iterator, batch_size, drop_last=False):
-        self.input_iterator = input_iterator
+    def __init__(self, input_dataset, batch_size, drop_last=False):
+        self.input_dataset = input_dataset
         self.batch_size = batch_size
         self.drop_last = drop_last
 
@@ -1301,7 +1281,7 @@ class BatchIterator(BaseIterator):
 
     def __iter__(self):
         current_batch = list()
-        for element in self.input_iterator():
+        for element in self.input_dataset():
             current_batch.append(element)
             if len(current_batch) >= self.batch_size:
                 yield current_batch
@@ -1318,7 +1298,7 @@ class BatchIterator(BaseIterator):
             current_batch = []
             for i in range(self.batch_size):
                 try:
-                    current_batch.append(self.input_iterator[input_index + i])
+                    current_batch.append(self.input_dataset[input_index + i])
                 except IndexError:
                     if i == 0 or self.drop_last:
                         raise
@@ -1331,33 +1311,33 @@ class BatchIterator(BaseIterator):
             return super().__getitem__(index)
 
     def __len__(self):
-        length = len(self.input_iterator) / self.batch_size
+        length = len(self.input_dataset) / self.batch_size
         if self.drop_last:
             return int(length)
         return int(np.ceil(length))
 
 
-class DynamicBucketIterator(BaseIterator):
+class DynamicBucketDataset(Dataset):
     """
     >>> samples = [1, 10, 5, 7, 8, 2, 4]
-    >>> batch_iterator = DynamicBucketIterator(\
+    >>> batch_dataset = DynamicBucketDataset(\
     samples, 2, key=lambda x: x, min_rate=0.5)
-    >>> [batch for batch in batch_iterator]
+    >>> [batch for batch in batch_dataset]
     [[10, 5], [7, 8], [1, 2], [4]]
-    >>> batch_iterator = DynamicBucketIterator(\
+    >>> batch_dataset = DynamicBucketDataset(\
     samples, 2, key=lambda x: x, min_rate=0.5, drop_last=True)
-    >>> [batch for batch in batch_iterator]
+    >>> [batch for batch in batch_dataset]
     [[10, 5], [7, 8], [1, 2]]
-    >>> batch_iterator = DynamicBucketIterator(\
+    >>> batch_dataset = DynamicBucketDataset(\
     samples, 2, key=lambda x: x, min_rate=0.8)
-    >>> [batch for batch in batch_iterator]
+    >>> [batch for batch in batch_dataset]
     [[10, 8], [5, 4], [1], [7], [2]]
     """
     def __init__(
-            self, input_iterator, batch_size, key, min_rate=0.5, max_value=1e6,
+            self, input_dataset, batch_size, key, min_rate=0.5, max_value=1e6,
             drop_last=False
     ):
-        self.input_iterator = input_iterator
+        self.input_dataset = input_dataset
         self.batch_size = batch_size
         if callable(key):
             self.key = key
@@ -1371,7 +1351,7 @@ class DynamicBucketIterator(BaseIterator):
 
     def __iter__(self):
         buckets = list()
-        for i, sample in enumerate(self.input_iterator):
+        for i, sample in enumerate(self.input_dataset):
             value = min(self.key(sample), self.max_value)
             found_bucket = False
             for i, (bucket, min_value, max_value) in enumerate(buckets):
@@ -1503,27 +1483,27 @@ class IdFilter:
 
         An alternative with slicing:
 
-        >>> it = ExamplesIterator({'a': {}, 'b': {}, 'c': {}})
+        >>> it = DictDataset({'a': {}, 'b': {}, 'c': {}})
         >>> it = it.items().map(lambda x: {'example_id': x[0], **x[1]})
         >>> list(it)
         [{'example_id': 'a'}, {'example_id': 'b'}, {'example_id': 'c'}]
         >>> it['a']
         {'example_id': 'a'}
         >>> it['a', 'b']  # doctest: +ELLIPSIS
-              ExamplesIterator(len=3)
-              ExamplesIterator(len=3)
-            ZipIterator()
-          MapIterator(<function <lambda> at 0x...>)
-        SliceIterator(('a', 'b'))
+              ExamplesDataset(len=3)
+              ExamplesDataset(len=3)
+            ZipDataset()
+          MapDataset(<function <lambda> at 0x...>)
+        SliceDataset(('a', 'b'))
         >>> list(it['a', 'b'])
         [{'example_id': 'a'}, {'example_id': 'b'}]
 
         >>> it.filter(IdFilter(('a', 'b')))  # doctest: +ELLIPSIS
-              ExamplesIterator(len=3)
-              ExamplesIterator(len=3)
-            ZipIterator()
-          MapIterator(<function <lambda> at 0x...>)
-        FilterIterator(<nt.database.iterator.IdFilter object at 0x...>)
+              ExamplesDataset(len=3)
+              ExamplesDataset(len=3)
+            ZipDataset()
+          MapDataset(<function <lambda> at 0x...>)
+        FilterDataset(<nt.database.dataset.IdFilter object at 0x...>)
         >>> list(it.filter(IdFilter(('a', 'b'))))
         [{'example_id': 'a'}, {'example_id': 'b'}]
         """
