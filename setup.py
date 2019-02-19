@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+# Original: https://github.com/kennethreitz/setup.py
+
 # Note: To use the 'upload' functionality of this file, you must:
 #   $ pip install twine
 
@@ -12,11 +14,11 @@ from shutil import rmtree
 from setuptools import find_packages, setup, Command
 
 # Package meta-data.
-NAME = 'mypackage'
+NAME = 'lazy_dataset'
 DESCRIPTION = 'My short description for my project.'
-URL = 'https://github.com/me/myproject'
-EMAIL = 'me@example.com'
-AUTHOR = 'Awesome Soul'
+URL = 'https://github.com/fgnt/lazy_dataset'
+EMAIL = 'boeddeker@nt.upb.de'
+AUTHOR = 'Christoph Boeddeker'
 REQUIRES_PYTHON = '>=3.6.0'
 VERSION = None
 
