@@ -1,1 +1,6 @@
-from .core import Dataset, from_dict, from_list
+from .core import (
+    new,
+    Dataset,
+    from_dict,
+    from_list,
+)

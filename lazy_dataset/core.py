@@ -121,7 +121,42 @@ class FilterException(Exception):
     pass
 
 
+def new(examples, immutable_warranty='pickle'):
+    """
+
+    >>> import lazy_dataset
+    >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3})
+    >>> ds
+      DictDataset(len=3)
+    MapDataset(_pickle.loads)
+    >>> ds.keys()
+    ('a', 'b', 'c')
+    >>> list(ds)
+    [1, 2, 3]
+    >>> ds = ds.map(lambda example: example * 2)
+    >>> list(ds)
+    [2, 4, 6]
+    >>> ds = ds.filter(lambda example: example > 2)
+    >>> list(ds)
+    [4, 6]
+    >>> ds
+          DictDataset(len=3)
+        MapDataset(_pickle.loads)
+      MapDataset(<function <lambda> at ...>)
+    FilterDataset(<function <lambda> at ...>)
+
+    """
+    if isinstance(examples, dict):
+        ds = from_dict(examples, immutable_warranty=immutable_warranty)
+    elif isinstance(examples, (tuple, list)):
+        ds = from_list(examples, immutable_warranty=immutable_warranty)
+    else:
+        raise TypeError(type(examples), examples)
+    return ds
+
+
 class Dataset:
+
     def __call__(self):
         """
         Usecase
@@ -717,7 +752,13 @@ class MapDataset(Dataset):
         self.input_dataset = input_dataset
 
     def __str__(self):
-        return f'{self.__class__.__name__}({self.map_function})'
+        map_function_str = str(self.map_function)
+        if 'built-in function' in map_function_str:
+            map_function_str = (
+                f'{self.map_function.__module__}'
+                f'.{self.map_function.__qualname__}'
+            )
+        return f'{self.__class__.__name__}({map_function_str})'
 
     def __len__(self):
         return len(self.input_dataset)
