@@ -69,7 +69,6 @@ from pathlib import Path
 import itertools
 import random as rnd
 
-from cached_property import cached_property
 import numpy as np
 
 LOG = logging.getLogger('Database')
@@ -87,6 +86,24 @@ def from_dict(examples, immutable_warranty='pickle'):
         ds = ds.map(pickle.loads)
     elif immutable_warranty == 'copy':
         ds = DictDataset(examples)
+        ds = ds.map(deepcopy)
+    else:
+        raise ValueError(immutable_warranty)
+
+    return ds
+
+
+def from_list(examples, immutable_warranty='pickle'):
+    assert isinstance(examples, (tuple, list)), examples
+    if immutable_warranty == 'pickle':
+        examples = [
+            pickle.dumps(example)
+            for example in examples
+        ]
+        ds = ListDataset(examples)
+        ds = ds.map(pickle.loads)
+    elif immutable_warranty == 'copy':
+        ds = ListDataset(examples)
         ds = ds.map(deepcopy)
     else:
         raise ValueError(immutable_warranty)
@@ -603,7 +620,7 @@ class DictDataset(Dataset):
     """
 
     def __init__(self, examples, name=None):
-        assert isinstance(examples, dict)
+        assert isinstance(examples, dict), (type(examples), examples)
         self.examples = examples
         self.name = name
         self._keys = tuple(self.examples.keys())
@@ -636,8 +653,44 @@ class DictDataset(Dataset):
         else:
             return super().__getitem__(item)
 
-        # Ensure that nobody can change the data.
-        return deepcopy(example)
+        # Assumes that the example is immutable.
+        # See from_dict(immutable_warranty).
+        return example
+
+    def __len__(self):
+        return len(self.examples)
+
+
+class ListDataset(Dataset):
+    """
+    Dataset to iterate over a list of examples with each example being a dict
+    according to the json structure as outline in the top of this file.
+    """
+
+    def __init__(self, examples, name=None):
+        assert isinstance(examples, (tuple, list)), (type(examples), examples)
+        self.examples = examples
+        self.name = name
+
+    def __str__(self):
+        if self.name is None:
+            return f'{self.__class__.__name__}(len={len(self)})'
+        else:
+            return f'{self.__class__.__name__}' \
+                   f'(name={self.name}, len={len(self)})'
+
+    def __iter__(self):
+        yield from self.examples
+
+    def __getitem__(self, item):
+        if isinstance(item, numbers.Integral):
+            example = self.examples[item]
+        else:
+            return super().__getitem__(item)
+
+        # Assumes that the example is immutable.
+        # See from_dict(immutable_warranty).
+        return example
 
     def __len__(self):
         return len(self.examples)
