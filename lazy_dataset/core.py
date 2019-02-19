@@ -157,13 +157,18 @@ class Dataset:
 
     def map(self, map_fn, num_workers=0, buffer_size=100, backend='t'):
         """
-        :param map_fn: function to transform an example dict. Takes an example
-            dict as provided by this dataset and returns a transformed
-            example dict, e.g. read and adss the observed audio signals.
-        :param num_workers:
-        :param buffer_size:
-        :return: MapDataset returning mapped examples. This can e.g. be
-        used to read and add audio to the example dict (see read_audio method).
+
+        Args:
+            map_fn: function to transform an example dict. Takes an example
+                dict as provided by this dataset and returns a transformed
+                example dict, e.g. read and adds the observed audio signals.
+            num_workers:
+            buffer_size:
+            backend:
+
+        Returns:
+            MapDataset returning mapped examples. This can e.g. be used to read
+            and add audio to the example dict (see read_audio method).
 
         Note:
           - map_fn can do inplace transformations without using copy.
@@ -240,11 +245,14 @@ class Dataset:
         Syntax is inspired by:
         https://docs.python.org/3/library/functions.html#filter
 
-        :param filter_fn: function to filter examples, takes example as input
-            and returns True if example should be kept, else False.
-        :param lazy: If True, dataset does not support `len(it)` anymore but
-            computation is performed once the dataset visits the item.
-        :return: FilterDataset iterating over filtered examples.
+        Args:
+            filter_fn: function to filter examples, takes example as input
+                and returns True if example should be kept, else False.
+            lazy: If True, dataset does not support `len(it)` anymore but
+                computation is performed once the dataset visits the item.
+
+        Returns: FilterDataset iterating over filtered examples.
+
         """
         if lazy:
             # Input dataset can be indexable, but this is not needed.
@@ -278,8 +286,13 @@ class Dataset:
     def concatenate(self, *others):
         """
         Concatenate this dataset with others. keys need to be unambiguous.
-        :param others: list of other datasets to be concatenated
-        :return: ExamplesDataset iterating over all examples.
+
+        Args:
+            *others: list of datasets to be concatenated
+
+        Returns:
+            Dataset that can iterate over all examples.
+
         """
         if len(others) == 0:
             return self
@@ -331,20 +344,27 @@ class Dataset:
         {'example_id': 'a', 'z': 1, 'y': 'c'}
         {'example_id': 'b', 'z': 3, 'y': 'd'}
 
-        :param others: list of other datasets to be zipped
-        :return: Dataset
+
+        Args:
+            *others: list of other datasets to be zipped
+
+        Returns: ZipDataset
+
         """
         return ZipDataset(self, *others)
 
     def shuffle(self, reshuffle=False, rng=None, buffer_size=None):
         """
         Shuffle this dataset.
-        :param reshuffle:
-            If True, shuffle on each iteration, but disable indexing.
-            If False, single shuffle, but support indexing.
-        :param rng:
-        :param buffer_size:
-        :return:
+
+        Args:
+            reshuffle:
+                If True, shuffle on each iteration, but disable indexing.
+                If False, single shuffle, but support indexing.
+            rng:
+            buffer_size:
+
+        Returns:
 
         Note:
          - Use the buffer_size only in special cases were the dataset is
@@ -471,9 +491,13 @@ class Dataset:
 
     def batch(self, batch_size, drop_last=False):
         """
-        :param batch_size:
-        :param drop_last:
-        :return:
+
+        Args:
+            batch_size:
+            drop_last:
+
+        Returns:
+
         """
         return BatchDataset(self, batch_size, drop_last)
 
@@ -610,9 +634,11 @@ class MapDataset(Dataset):
     def __init__(self, map_function, input_dataset):
         """
 
-        :param map_function: function that transforms an element of
-            input_dataset. Use deepcopy within the map_function if necessary.
-        :param input_dataset: any dataset (e.g. ExampleDataset)
+        Args:
+            map_function: function that transforms an element of input_dataset.
+                Use deepcopy within the map_function if necessary.
+            input_dataset: any dataset (e.g. ExampleDataset)
+
         """
         assert callable(map_function), map_function
         self.map_function = map_function
@@ -1018,9 +1044,11 @@ class FilterDataset(Dataset):
     def __init__(self, filter_function, input_dataset):
         """
 
-        :param filter_function: a function that takes an element of the input
-            dataset and returns True if the element is valid else False.
-        :param input_dataset: any dataset (e.g. ExampleDataset)
+        Args:
+            filter_function: a function that takes an element of the input
+                dataset and returns True if the element is valid else False.
+            input_dataset: any dataset (e.g. ExampleDataset)
+
         """
         assert callable(filter_function), filter_function
         self.filter_function = filter_function
@@ -1058,7 +1086,10 @@ class ConcatenateDataset(Dataset):
 
     def __init__(self, *input_datasets):
         """
-        :param input_datasets: list of datasets
+
+        Args:
+            *input_datasets: list of datasets
+
         """
         self.input_datasets = input_datasets
 
@@ -1157,7 +1188,10 @@ class ZipDataset(Dataset):
 
     def __init__(self, *input_datasets):
         """
-        :param input_datasets: list of datasets
+        
+        Args:
+            *input_datasets: list of datasets
+
         """
         self.input_datasets = input_datasets
         assert len(self.input_datasets) >= 1, \
