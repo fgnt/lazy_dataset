@@ -59,6 +59,7 @@ If the example IDs are not unique in the original database, the example IDs
 are made unique by prefixing them with the dataset name of the original
 database, i.e. dt_simu_c0123.
 """
+import pickle
 import logging
 import numbers
 import textwrap
@@ -74,6 +75,23 @@ import numpy as np
 LOG = logging.getLogger('Database')
 
 import collections
+
+
+def from_dict(examples, immutable_warranty='pickle'):
+    if immutable_warranty == 'pickle':
+        examples = {
+            k: pickle.dumps(v)
+            for k, v in examples.items()
+        }
+        ds = DictDataset(examples)
+        ds = ds.map(pickle.loads)
+    elif immutable_warranty == 'copy':
+        ds = DictDataset(examples)
+        ds = ds.map(deepcopy)
+    else:
+        raise ValueError(immutable_warranty)
+
+    return ds
 
 
 class FilterException(Exception):
@@ -172,7 +190,7 @@ class Dataset:
 
         Note:
           - map_fn can do inplace transformations without using copy.
-            The ExampleDataset makes a deepcopy of each example and prevents a
+            The DictDataset makes a deepcopy of each example and prevents a
             modification of the root example.
           - If num_workers > 0 that the map_fn is performed in parallel.
             But the input dataset is still executed serial.
@@ -324,16 +342,16 @@ class Dataset:
         # Merge the dicts, when conflict, prefer the second
         >>> ds4 = ds3.map(lambda example: {**example[0], **example[1]})
         >>> ds4  # doctest: +ELLIPSIS
-                ExamplesDataset(len=2)
-                ExamplesDataset(len=2)
+                DictDataset(len=2)
+                DictDataset(len=2)
               ZipDataset()
-            MapDataset(<function <lambda> at 0x...>)
-                ExamplesDataset(len=2)
-                ExamplesDataset(len=2)
+            MapDataset(<function <lambda> at ...>)
+                DictDataset(len=2)
+                DictDataset(len=2)
               ZipDataset()
-            MapDataset(<function <lambda> at 0x...>)
+            MapDataset(<function <lambda> at ...>)
           ZipDataset()
-        MapDataset(<function <lambda> at 0x...>)
+        MapDataset(<function <lambda> at ...>)
         >>> for e in ds4: print(e)
         {'example_id': 'a', 'z': 1, 'y': 'c'}
         {'example_id': 'b', 'z': 3, 'y': 'd'}
@@ -412,13 +430,13 @@ class Dataset:
         ...     print(f'{k}:', list(v), v.keys())
         ...     print(f'{v!r}')
         1: [{'z': 1}, {'z': 1}, {'z': 1}] ('a', 'c', 'd')
-          ExamplesDataset(len=5)
+          DictDataset(len=5)
         SliceDataset([0, 2, 3])
         2: [{'z': 2}] ('b',)
-          ExamplesDataset(len=5)
+          DictDataset(len=5)
         SliceDataset([1])
         3: [{'z': 3}] ('e',)
-          ExamplesDataset(len=5)
+          DictDataset(len=5)
         SliceDataset([4])
         """
         iterable = enumerate(list(self.map(group_fn)))
@@ -438,7 +456,8 @@ class Dataset:
         [{'example_id': 'a'}, {'example_id': 'b'}, {'example_id': 'c'}]
         >>> list(its[1])
         [{'example_id': 'd'}, {'example_id': 'e'}]
-        >>> list(its[1].keys())
+        >>> its[1].keys()
+        ('d', 'e')
         """
         if sections < 1:
             raise ValueError("sections must be >= 1")
@@ -471,8 +490,8 @@ class Dataset:
         >>> it = DictDataset(examples)
         >>> it_sorted = it.sort(lambda ex: ex['x'])
         >>> it_sorted
-          ExamplesDataset(len=4)
-        SliceDataset(('a', 'd', 'b', 'c'))
+          DictDataset(len=4)
+        SliceDataset(['a', 'd', 'b', 'c'])
         >>> print(it_sorted.slice)
         (0, 3, 1, 2)
         >>> list(it_sorted)
@@ -637,7 +656,7 @@ class MapDataset(Dataset):
         Args:
             map_function: function that transforms an element of input_dataset.
                 Use deepcopy within the map_function if necessary.
-            input_dataset: any dataset (e.g. ExampleDataset)
+            input_dataset: any dataset (e.g. DictDataset)
 
         """
         assert callable(map_function), map_function
@@ -704,16 +723,16 @@ class CatchExceptionDataset(Dataset):
     >>> list(it.map(foo))
     Traceback (most recent call last):
     ...
-    dataset.FilterException: Exception msg
+    core.FilterException: Exception msg
     >>> list(it.map(foo).catch())
     [1, 3]
     >>> it.map(foo).catch()[0]  # doctest: +ELLIPSIS
     Traceback (most recent call last):
     ...
-    NotImplementedError: __getitem__ is not well defined for <class 'dataset.CatchExceptionDataset'>[0],
+    NotImplementedError: __getitem__ is not well defined for <class 'core.CatchExceptionDataset'>[0],
     because 0 is an index
     self:
-        ExamplesDataset(len=3)
+        DictDataset(len=3)
       MapDataset(<function foo at ...>)
     CatchExceptionDataset()
     """
@@ -842,10 +861,10 @@ class ShuffleDataset(Dataset):
     >>> it = it.items().map(lambda x: {'example_id': x[0], **x[1]})
     >>> it = it.shuffle(False)
     >>> it  # doctest: +ELLIPSIS
-          ExamplesDataset(len=3)
-          ExamplesDataset(len=3)
+          DictDataset(len=3)
+          DictDataset(len=3)
         ZipDataset()
-      MapDataset(<function <lambda> at 0x...>)
+      MapDataset(<function <lambda> at ...>)
     ShuffleDataset()
     >>> list(it)
     [{'example_id': 'a'}, {'example_id': 'c'}, {'example_id': 'b'}]
@@ -899,7 +918,7 @@ class ReShuffleDataset(Dataset):
         return len(self.input_dataset)
 
     # keys is not well defined for this dataset
-    # The First dataset (i.e. ExamplesDataset has sorted keys), so what should
+    # The First dataset (i.e. DictDataset has sorted keys), so what should
     # this dataset return? Maybe a frozenset to highlight unordered?
     # def keys(self):
     #     return frozenset(self.input_dataset.keys())
@@ -1004,6 +1023,8 @@ class SliceDataset(Dataset):
             # "tuple([keys[i] for i in self.slice])"
             # but is 10 times faster
             self._keys = operator.itemgetter(*self.slice)(keys)
+            if len(self.slice) == 1:
+                self._keys = (self._keys,)
         return self._keys
 
     def __len__(self):
@@ -1047,7 +1068,7 @@ class FilterDataset(Dataset):
         Args:
             filter_function: a function that takes an element of the input
                 dataset and returns True if the element is valid else False.
-            input_dataset: any dataset (e.g. ExampleDataset)
+            input_dataset: any dataset (e.g. DictDataset)
 
         """
         assert callable(filter_function), filter_function
@@ -1262,13 +1283,12 @@ class FragmentDataset(Dataset):
 class BatchDataset(Dataset):
     """
 
-    >>> from paderbox.database.dataset import ExamplesDataset
     >>> import string
     >>> examples = {c: i for i, c in enumerate(string.ascii_letters[:7])}
     >>> it = DictDataset(examples)
     >>> it = it.batch(3)
     >>> it
-      ExamplesDataset(len=7)
+      DictDataset(len=7)
     BatchDataset(batch_size=3)
     >>> list(it), len(it)
     ([[0, 1, 2], [3, 4, 5], [6]], 3)
@@ -1293,10 +1313,10 @@ class BatchDataset(Dataset):
     >>> it['abc']
     Traceback (most recent call last):
     ...
-    NotImplementedError: __getitem__ is not implemented for <class 'nt.database.dataset.BatchDataset'>['abc'],
+    NotImplementedError: __getitem__ is not implemented for <class 'core.BatchDataset'>['abc'],
     where type('abc') == <class 'str'>
     self:
-        ExamplesDataset(len=7)
+        DictDataset(len=7)
       SliceDataset(slice(None, 6, None))
     BatchDataset(batch_size=3)
 
@@ -1402,3 +1422,8 @@ class DynamicBucketDataset(Dataset):
             buckets = sorted(buckets, key=lambda x: len(x[0]), reverse=True)
             for bucket, _, _ in buckets:
                 yield bucket
+
+
+if __name__ == '__main__':
+    import doctest
+    doctest.testmod()
