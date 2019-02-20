@@ -580,10 +580,10 @@ class HybridASRDatabaseTemplate:
     @cached_property
     def state_alignment(self):
         alignments = kaldi.alignment.import_alignment_data(
-            self.ali_path_train, model_name=self.model_file
+            self.ali_path_eval, model_name=self.model_file
         )
         alignments.update(kaldi.alignment.import_alignment_data(
-            self.ali_path_eval, model_name=self.model_file
+            self.ali_path_train, model_name=self.model_file
         ))
         return alignments
 
