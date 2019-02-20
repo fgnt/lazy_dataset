@@ -535,11 +535,13 @@ class HybridASRDatabaseTemplate:
 
     @cached_property
     def _phone2id_dict(self):
-        return kaldi.io.read_keyed_text_file(self.phones)
+        return kaldi.io.keyed_lines.load_keyed_lines(self.phones)
 
     @cached_property
     def _id2phone_dict(self):
-        return {int(v[0]): k for k, v in self._phone2id_dict.items()}
+        # `v` was indexed with 0. Was this intentional? Did not work for Chime3
+        # so I removed the index
+        return {int(v): k for k, v in self._phone2id_dict.items()}
 
     def phone2id(self, phone):
         return self._phone2id_dict[phone]
