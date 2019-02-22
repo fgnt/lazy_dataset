@@ -1,64 +1,3 @@
-"""
-The reader is part of the new database concept 2017.
-
-The task of the reader is to take a database JSON and an dataset identifier as
-an input and load all meta data for each observation with corresponding
-numpy arrays for each time signal (non stacked).
-
-An example ID often stands for utterance ID. In case of speaker mixtures,
-it replaces mixture ID. Also, in case of event detection utterance ID is not
-very adequate.
-
-The JSON file is specified as follows:
-
-datasets:
-    <dataset name 0>
-        <unique example id 1> (unique within a dataset)
-            audio_path:
-                speech_source:
-                    <path to speech of speaker 0>
-                    <path to speech of speaker 1>
-                observation:
-                    blue_array: (a list, since there are no missing channels)
-                        <path to observation of blue_array and channel 0>
-                        <path to observation of blue_array and channel 0>
-                        ...
-                    red_array: (special case for missing channels)
-                        c0: <path to observation of red_array and channel 0>
-                        c99: <path to observation of red_array and channel 99>
-                        ...
-                speech_image:
-                    ...
-            speaker_id:
-                <speaker_id for speaker 0>
-                ...
-            gender:
-                <m/f>
-                ...
-            ...
-
-Make sure, all keys are natsorted in the JSON file.
-
-Make sure, the names are not redundant and it is clear, which is train, dev and
-test set. The names should be as close as possible to the original database
-names.
-
-An observation/ example has information according to the keys file.
-
-If a database does not have different arrays, the array dimension can be
-omitted. Same holds true for the channel axis or the speaker axis.
-
-The different axis have to be natsorted, when they are converted to numpy
-arrays. Skipping numbers (i.e. c0, c99) is database specific and is not handled
-by a generic implementation.
-
-If audio paths are a list, they will be stacked to a numpy array. If it is a
-dictionary, it will become a dictionary of numpy arrays.
-
-If the example IDs are not unique in the original database, the example IDs
-are made unique by prefixing them with the dataset name of the original
-database, i.e. dt_simu_c0123.
-"""
 import pickle
 import logging
 import numbers
@@ -74,6 +13,40 @@ import numpy as np
 LOG = logging.getLogger('Database')
 
 import collections
+
+
+def new(examples, immutable_warranty='pickle'):
+    """
+
+    >>> import lazy_dataset
+    >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3})
+    >>> ds
+      DictDataset(len=3)
+    MapDataset(_pickle.loads)
+    >>> ds.keys()
+    ('a', 'b', 'c')
+    >>> list(ds)
+    [1, 2, 3]
+    >>> ds = ds.map(lambda example: example * 2)
+    >>> list(ds)
+    [2, 4, 6]
+    >>> ds = ds.filter(lambda example: example > 2)
+    >>> list(ds)
+    [4, 6]
+    >>> ds
+          DictDataset(len=3)
+        MapDataset(_pickle.loads)
+      MapDataset(<function <lambda> at ...>)
+    FilterDataset(<function <lambda> at ...>)
+
+    """
+    if isinstance(examples, dict):
+        ds = from_dict(examples, immutable_warranty=immutable_warranty)
+    elif isinstance(examples, (tuple, list)):
+        ds = from_list(examples, immutable_warranty=immutable_warranty)
+    else:
+        raise TypeError(type(examples), examples)
+    return ds
 
 
 def from_dict(examples, immutable_warranty='pickle'):
@@ -121,50 +94,7 @@ class FilterException(Exception):
     pass
 
 
-def new(examples, immutable_warranty='pickle'):
-    """
-
-    >>> import lazy_dataset
-    >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3})
-    >>> ds
-      DictDataset(len=3)
-    MapDataset(_pickle.loads)
-    >>> ds.keys()
-    ('a', 'b', 'c')
-    >>> list(ds)
-    [1, 2, 3]
-    >>> ds = ds.map(lambda example: example * 2)
-    >>> list(ds)
-    [2, 4, 6]
-    >>> ds = ds.filter(lambda example: example > 2)
-    >>> list(ds)
-    [4, 6]
-    >>> ds
-          DictDataset(len=3)
-        MapDataset(_pickle.loads)
-      MapDataset(<function <lambda> at ...>)
-    FilterDataset(<function <lambda> at ...>)
-
-    """
-    if isinstance(examples, dict):
-        ds = from_dict(examples, immutable_warranty=immutable_warranty)
-    elif isinstance(examples, (tuple, list)):
-        ds = from_list(examples, immutable_warranty=immutable_warranty)
-    else:
-        raise TypeError(type(examples), examples)
-    return ds
-
-
 class Dataset:
-
-    def __call__(self):
-        """
-        Usecase
-          tf.data.Dataset.from_generator(dataset)
-        Without __call__:
-          tf.data.Dataset.from_generator(lambda: dataset)
-        """
-        return self.__iter__()
 
     def __iter__(self):
         raise NotImplementedError(
@@ -224,6 +154,15 @@ class Dataset:
         raise Exception(
             f"Use 'key in {self.__class__}.keys()' "
             f"instead of 'key in {self.__class__}'")
+
+    def __call__(self):
+        """
+        Usecase
+          tf.data.Dataset.from_generator(dataset)
+        Without __call__:
+          tf.data.Dataset.from_generator(lambda: dataset)
+        """
+        return self.__iter__()
 
     def map(self, map_fn, num_workers=0, buffer_size=100, backend='t'):
         """
