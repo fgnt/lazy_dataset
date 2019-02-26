@@ -4,13 +4,12 @@ import numbers
 import textwrap
 import operator
 from copy import deepcopy
-from pathlib import Path
 import itertools
 import random as rnd
 
 import numpy as np
 
-LOG = logging.getLogger('Database')
+LOG = logging.getLogger('lazy_dataset')
 
 import collections
 
