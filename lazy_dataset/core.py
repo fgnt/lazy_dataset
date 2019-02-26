@@ -588,8 +588,7 @@ class Dataset:
 
 class DictDataset(Dataset):
     """
-    Dataset to iterate over a list of examples with each example being a dict
-    according to the json structure as outline in the top of this file.
+    Dataset to iterate over a dict of examples dicts.
     """
 
     def __init__(self, examples, name=None):
