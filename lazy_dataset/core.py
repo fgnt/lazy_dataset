@@ -730,7 +730,7 @@ class ParMapDataset(MapDataset):
 
     def __iter__(self):
 
-        from paderbox.utils.parallel_utils import lazy_parallel_map
+        from lazy_dataset.parallel_utils import lazy_parallel_map
 
         return lazy_parallel_map(
             self.map_function,
@@ -829,7 +829,7 @@ class PrefetchDataset(Dataset):
 
     def __iter__(self):
 
-        from paderbox.utils.parallel_utils import lazy_parallel_map
+        from lazy_dataset.parallel_utils import lazy_parallel_map
 
         if (
                 self.catch_filter_exception is False
