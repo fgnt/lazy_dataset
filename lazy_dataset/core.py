@@ -1205,6 +1205,8 @@ class ConcatenateDataset(Dataset):
         {'example_id': 'c'}
         """
         if isinstance(item, numbers.Integral):
+            if item < 0:
+                item = item % len(self)
             for dataset in self.input_datasets:
                 if len(dataset) <= item:
                     item -= len(dataset)
