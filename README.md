@@ -1,5 +1,6 @@
 # lazy_dataset
 
+[![Build Status](https://travis-ci.org/fgnt/lazy_dataset.svg?branch=master)](https://travis-ci.org/fgnt/lazy_dataset)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/fgnt/lazy_dataset/blob/master/LICENSE)
 
 Lazy_dataset is a helper to deal with large datasets that do not fit into memory.
