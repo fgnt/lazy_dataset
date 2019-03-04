@@ -5,7 +5,12 @@ python:
 cache: pip
 
 install:
+  - pip install codecov
   - pip install -e .
 
 script:
-  - pytest --doctest-modules tests/
+  - pytest --doctest-modules tests/ --cov=codecov
+
+# Push the results back to codecov
+after_success:
+  - codecov
