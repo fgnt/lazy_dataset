@@ -1,5 +1,7 @@
 # lazy_dataset
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/fgnt/lazy_dataset/blob/master/LICENSE)
+
 Lazy_dataset is a helper to deal with large datasets that do not fit into memory.
 It allows to define transformations that are applied lazy,
 (e.g. a mapping function to read data from HDD). When someone iterates over the dataset all
