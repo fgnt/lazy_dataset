@@ -478,7 +478,10 @@ class Dataset:
 
     def sort(self, key_fn, sort_fn=sorted, reverse=False):
         """
-        Sorts the dataset with the entry described by key_list
+        Sorts the dataset. The sort key is extracted from each example with
+        the key_fn. The sort_fn allows to influence the sorting,
+        e.g. natsort.natsorted.
+
         >>> examples = {'a': {'x': 1}, 'b': {'x': 3},  'c': {'x': 12}, 'd': {'x': 2}}
         >>> it = DictDataset(examples)
         >>> it_sorted = it.sort(lambda ex: ex['x'])
