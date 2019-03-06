@@ -38,20 +38,11 @@ def test_shuffle_prefetch():
 
     np.random.seed(0)
 
-    # With reshuffle prefetch does not work
+    # With reshuffle prefetch still works and the ordering is each time
+    # different
     ds = get_dataset()
     ds = ds.shuffle(reshuffle=True)
     ds = ds.prefetch(2, 4)
-    with pytest.raises(TypeError):
-        example_ids = [ex['example_id'] for ex in ds]
-
-    np.random.seed(0)
-
-    # With reshuffle and freeze in prefetch, shuffling works and the example
-    # order changes each time
-    ds = get_dataset()
-    ds = ds.shuffle(reshuffle=True)
-    ds = ds.prefetch(2, 4, freeze=True)
     example_ids = [ex['example_id'] for ex in ds]
     assert example_ids == 'c a b d e'.split()
     example_ids = [ex['example_id'] for ex in ds]

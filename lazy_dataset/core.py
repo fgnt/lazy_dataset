@@ -197,7 +197,7 @@ class Dataset:
             )
         return MapDataset(map_fn, self)
 
-    def prefetch(self, num_workers, buffer_size, backend='t', catch_filter_exception=None, freeze=False):
+    def prefetch(self, num_workers, buffer_size, backend='t', catch_filter_exception=None):
         """
 
         Args:
@@ -243,7 +243,6 @@ class Dataset:
             buffer_size=buffer_size,
             backend=backend,
             catch_filter_exception=catch_filter_exception,
-            freeze=freeze,
         )
 
     def filter(self, filter_fn, lazy=True):
@@ -840,7 +839,6 @@ class PrefetchDataset(Dataset):
             buffer_size,
             backend='t',
             catch_filter_exception=False,
-            freeze=False,
     ):
 
         # Input dataset needs to be indexable.
@@ -859,7 +857,6 @@ class PrefetchDataset(Dataset):
         self.buffer_size = buffer_size
         self.backend = backend
         self.catch_filter_exception = catch_filter_exception
-        self.freeze = freeze
 
     def copy(self, freeze=False):
         return self.__class__(
@@ -872,10 +869,8 @@ class PrefetchDataset(Dataset):
         )
 
     def __iter__(self):
-        if self.freeze:
-            input_dataset = self.input_dataset.copy(freeze=self.freeze)
-        else:
-            input_dataset = self.input_dataset
+        # Convert ReShuffleDataset to ShuffleDataset
+        input_dataset = self.input_dataset.copy(freeze=True)
 
         from lazy_dataset.parallel_utils import lazy_parallel_map
 
@@ -959,10 +954,13 @@ class ShuffleDataset(Dataset):
         self.input_dataset = input_dataset
 
     def copy(self, freeze=False):
-        return self.__class__(
+        new = self.__class__(
             input_dataset=self.input_dataset.copy(freeze=freeze),
             rng=self.rng,
         )
+        new.permutation = self.permutation
+
+        return new
 
     def __len__(self):
         return len(self.input_dataset)
