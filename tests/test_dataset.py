@@ -145,7 +145,7 @@ def test_concatenate_double_keys():
     assert ds[:1][0]['example_id'] == 'example_id_1'
 
 
-def test_zip_iterator():
+def test_zip():
     import numpy as np
     ds = get_dataset()
 
@@ -171,7 +171,7 @@ def test_zip_iterator():
     )
 
 
-def test_slice_iterator():
+def test_slice():
     ds = get_dataset()
     ds = ds.concatenate(ds)
 
