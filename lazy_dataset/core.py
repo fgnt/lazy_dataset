@@ -480,7 +480,7 @@ class Dataset:
         """
         Sorts the dataset. The sort key is extracted from each example with
         the key_fn. The sort_fn allows to influence the sorting,
-        e.g. natsort.natsorted.
+        e.g. natsort.natsorted. It is expected to have reverse as an argument.
 
         >>> examples = {'a': {'x': 1}, 'b': {'x': 3},  'c': {'x': 12}, 'd': {'x': 2}}
         >>> it = DictDataset(examples)
