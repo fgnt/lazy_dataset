@@ -476,7 +476,7 @@ class Dataset:
         """
         return FragmentDataset(fragment_fn, self)
 
-    def sort(self, key_fn, sort_fn=sorted):
+    def sort(self, key_fn, sort_fn=sorted, reverse=False):
         """
         Sorts the dataset with the entry described by key_list
         >>> examples = {'a': {'x': 1}, 'b': {'x': 3},  'c': {'x': 12}, 'd': {'x': 2}}
@@ -489,10 +489,19 @@ class Dataset:
         (0, 3, 1, 2)
         >>> list(it_sorted)
         [{'x': 1}, {'x': 2}, {'x': 3}, {'x': 12}]
+        >>> it_sorted = it.sort(lambda ex: ex['x'], reverse=True)
+        >>> list(it_sorted)
+        [{'x': 12}, {'x': 3}, {'x': 2}, {'x': 1}]
         """
         sort_values = [key_fn(self[key]) for key in self.keys()]
-        return self[tuple([key for _, key in
-                           sort_fn(zip(sort_values, self.keys()))])]
+        sort_order = [
+            key
+            for _, key in sort_fn(
+                zip(sort_values, self.keys()),
+                reverse=reverse,
+            )
+        ]
+        return self[tuple(sort_order)]
 
     def shard(self, num_shards, shard_index):
         """
