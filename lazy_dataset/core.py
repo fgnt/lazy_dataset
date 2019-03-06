@@ -95,6 +95,9 @@ class FilterException(Exception):
 
 class Dataset:
 
+    def copy(self, freeze=False):
+        raise NotImplementedError
+
     def __iter__(self):
         raise NotImplementedError(
             f'__iter__ is not implemented for {self.__class__}.\n'
@@ -597,6 +600,9 @@ class DictDataset(Dataset):
         self.name = name
         self._keys = tuple(self.examples.keys())
 
+    def copy(self, freeze=False):
+        return self.__class__(self.examples, name=self.name)
+
     def __str__(self):
         if self.name is None:
             return f'{self.__class__.__name__}(len={len(self)})'
@@ -644,6 +650,9 @@ class ListDataset(Dataset):
         self.examples = examples
         self.name = name
 
+    def copy(self, freeze=False):
+        return self.__class__(self.examples, name=self.name)
+
     def __str__(self):
         if self.name is None:
             return f'{self.__class__.__name__}(len={len(self)})'
@@ -688,6 +697,12 @@ class MapDataset(Dataset):
         self.map_function = map_function
         self.input_dataset = input_dataset
 
+    def copy(self, freeze=False):
+        return self.__class__(
+            self.map_function,
+            input_dataset=self.input_dataset.copy(freeze=freeze)
+        )
+
     def __str__(self):
         map_function_str = str(self.map_function)
         if 'built-in function' in map_function_str:
@@ -727,6 +742,15 @@ class ParMapDataset(MapDataset):
         self.num_workers = num_workers
         self.buffer_size = buffer_size
         self.backend = backend
+
+    def copy(self, freeze=False):
+        return self.__class__(
+            self.map_function,
+            input_dataset=self.input_dataset.copy(freeze=freeze),
+            num_workers=self.num_workers,
+            buffer_size=self.buffer_size,
+            backend=self.backend,
+        )
 
     def __iter__(self):
 
@@ -776,6 +800,13 @@ class CatchExceptionDataset(Dataset):
         self.input_dataset = input_dataset
         self.exceptions = exceptions
         self.warn = warn
+
+    def copy(self, freeze=False):
+        return self.__class__(
+            input_dataset=self.input_dataset.copy(freeze=freeze),
+            exceptions=self.exceptions,
+            warn=self.warn,
+        )
 
     def __getitem__(self, item):
         if isinstance(item, (str)):
@@ -827,7 +858,19 @@ class PrefetchDataset(Dataset):
         self.backend = backend
         self.catch_filter_exception = catch_filter_exception
 
+    def copy(self, freeze=False):
+        return self.__class__(
+            input_dataset=self.input_dataset.copy(freeze=freeze),
+            num_workers=self.num_workers,
+            buffer_size=self.buffer_size,
+            backend=self.backend,
+            catch_filter_exception=self.catch_filter_exception,
+            freeze=self.freeze,
+        )
+
     def __iter__(self):
+        # Convert ReShuffleDataset to ShuffleDataset
+        input_dataset = self.input_dataset.copy(freeze=True)
 
         from lazy_dataset.parallel_utils import lazy_parallel_map
 
@@ -840,7 +883,7 @@ class PrefetchDataset(Dataset):
                 )
         ):
             yield from lazy_parallel_map(
-                self.input_dataset.__getitem__,
+                input_dataset.__getitem__,
                 range(len(self.input_dataset)),
                 buffer_size=self.buffer_size,
                 max_workers=self.num_workers,
@@ -856,7 +899,7 @@ class PrefetchDataset(Dataset):
 
             def catcher(index):
                 try:
-                    return self.input_dataset[index]
+                    return input_dataset[index]
                 except catch_filter_exception:
                     return unique_object
 
@@ -905,9 +948,19 @@ class ShuffleDataset(Dataset):
 
     def __init__(self, input_dataset, rng=None):
         self.permutation = np.arange(len(input_dataset))
+        self.rng=rng
         rng = np.random if rng is None else rng
         rng.shuffle(self.permutation)
         self.input_dataset = input_dataset
+
+    def copy(self, freeze=False):
+        new = self.__class__(
+            input_dataset=self.input_dataset.copy(freeze=freeze),
+            rng=self.rng,
+        )
+        new.permutation = self.permutation
+
+        return new
 
     def __len__(self):
         return len(self.input_dataset)
@@ -941,9 +994,19 @@ class ReShuffleDataset(Dataset):
         This Dataset reshuffle each iteration, but does not support indexing.
     """
 
-    def __init__(self, input_dataset):
+    def __init__(self, input_dataset, rng=None):
         self.permutation = np.arange(len(input_dataset))
         self.input_dataset = input_dataset
+
+    def copy(self, freeze=False):
+        if freeze:
+            return ShuffleDataset(
+                input_dataset=self.input_dataset.copy(freeze=freeze),
+            )
+        else:
+            return self.__class__(
+                input_dataset=self.input_dataset.copy(freeze=freeze),
+            )
 
     def __len__(self):
         return len(self.input_dataset)
@@ -984,6 +1047,12 @@ class LocalShuffleDataset(Dataset):
     def __init__(self, input_dataset, buffer_size=100):
         self.input_dataset = input_dataset
         self.buffer_size = buffer_size
+
+    def copy(self, freeze=False):
+        return self.__class__(
+            input_dataset=self.input_dataset.copy(freeze=freeze),
+            buffer_size=self.buffer_size,
+        )
 
     def __len__(self):
         return len(self.input_dataset)
@@ -1044,6 +1113,12 @@ class SliceDataset(Dataset):
                 raise
 
         self.input_dataset = input_dataset
+
+    def copy(self, freeze=False):
+        return self.__class__(
+            input_dataset=self.input_dataset.copy(freeze=freeze),
+            slice=self._slice,
+        )
 
     _keys = None
 
@@ -1106,6 +1181,12 @@ class FilterDataset(Dataset):
         self.filter_function = filter_function
         self.input_dataset = input_dataset
 
+    def copy(self, freeze=False):
+        return self.__class__(
+            input_dataset=self.input_dataset.copy(freeze=freeze),
+            filter_function=self.filter_function,
+        )
+
     def __str__(self):
         return f'{self.__class__.__name__}({self.filter_function})'
 
@@ -1144,6 +1225,11 @@ class ConcatenateDataset(Dataset):
 
         """
         self.input_datasets = input_datasets
+
+    def copy(self, freeze=False):
+        return self.__class__(
+            *[ds.copy(freeze=freeze) for ds in self.input_datasets]
+        )
 
     def __iter__(self):
         for input_dataset in self.input_datasets:
@@ -1269,6 +1355,11 @@ class ZipDataset(Dataset):
                 f'\n{self.input_datasets}'
             )
 
+    def copy(self, freeze=False):
+        return self.__class__(
+            *[ds.copy(freeze=freeze) for ds in self.input_datasets]
+        )
+
     def __iter__(self):
         for key in self.keys():
             yield tuple([
@@ -1306,6 +1397,12 @@ class FragmentDataset(Dataset):
     def __init__(self, fragment_fn, input_dataset):
         self.fragment_fn = fragment_fn
         self.input_dataset = input_dataset
+
+    def copy(self, freeze=False):
+        return self.__class__(
+            input_dataset=self.input_dataset.copy(freeze=freeze),
+            fragment_fn=self.fragment_fn,
+        )
 
     def __iter__(self):
         for example in self.input_dataset:
@@ -1358,6 +1455,13 @@ class BatchDataset(Dataset):
         self.input_dataset = input_dataset
         self.batch_size = batch_size
         self.drop_last = drop_last
+
+    def copy(self, freeze=False):
+        return self.__class__(
+            input_dataset=self.input_dataset.copy(freeze=freeze),
+            batch_size=self.batch_size,
+            drop_last=self.drop_last,
+        )
 
     def __str__(self):
         return f'{self.__class__.__name__}(batch_size={self.batch_size})'
@@ -1431,6 +1535,16 @@ class DynamicBucketDataset(Dataset):
         self.max_value = max_value
         self.min_rate = min_rate
         self.drop_last = drop_last
+
+    def copy(self, freeze=False):
+        return self.__class__(
+            input_dataset=self.input_dataset.copy(freeze=freeze),
+            batch_size=self.batch_size,
+            key=self.key,
+            max_value=self.max_value,
+            min_rate=self.min_rate,
+            drop_last=self.drop_last,
+        )
 
     def __iter__(self):
         buckets = list()
