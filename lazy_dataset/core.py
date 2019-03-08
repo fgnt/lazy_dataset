@@ -378,10 +378,11 @@ class Dataset:
         Returns:
 
         Note:
-         - Use the buffer_size only in special cases were the dataset is
-           already shuffled. For example a dataset is shuffled and then a
-           fragment call splits on into multiple examples. In this case a local
-           shuffle (i.e. buffer_size > 0) is reasonable.
+         - Use the buffer_size only in special cases where the dataset is
+           already shuffled. For example a dataset is shuffled and then
+           each example is split into multiple examples (using
+           .map(fragment_fn).unbatch()). In this case a local shuffle
+           (i.e. buffer_size > 0) is reasonable.
 
         """
         # Should reshuffle default be True or False
@@ -462,20 +463,6 @@ class Dataset:
         slices = np.array_split(np.arange(len(self)), sections)
         return [self[list(s)] for s in slices]
 
-    def fragment(self, fragment_fn):
-        """
-        Fragments each example into multiple new examples.
-        E.g. use channels as single examples or split each example into segments
-
-        >>> examples = {'a': [1, 2], 'b': [3, 4]}
-        >>> it = DictDataset(examples)
-        >>> list(it)
-        [[1, 2], [3, 4]]
-        >>> list(it.fragment(lambda ex: ex))
-        [1, 2, 3, 4]
-        """
-        return FragmentDataset(fragment_fn, self)
-
     def sort(self, key_fn, sort_fn=sorted, reverse=False):
         """
         Sorts the dataset. The sort key is extracted from each example with
@@ -524,6 +511,21 @@ class Dataset:
 
         """
         return BatchDataset(self, batch_size, drop_last)
+
+    def unbatch(self):
+        """
+        Divides a batch of examples into single examples.
+        E.g. after splitting a (multi-channel) source example into a list of
+        single channel examples using .map() .
+
+        >>> examples = {'a': [1, 2], 'b': [3, 4]}
+        >>> it = DictDataset(examples)
+        >>> list(it)
+        [[1, 2], [3, 4]]
+        >>> list(it.unbatch())
+        [1, 2, 3, 4]
+        """
+        return UnbatchDataset(self)
 
     def __str__(self):
         return f'{self.__class__.__name__}()'
@@ -1401,27 +1403,6 @@ class ZipDataset(Dataset):
             return super().__getitem__(item)
 
 
-class FragmentDataset(Dataset):
-    """
-    Fragments each example from an input_dataset into multiple new examples.
-    E.g. use channels as single examples or split each example into segments
-    """
-    def __init__(self, fragment_fn, input_dataset):
-        self.fragment_fn = fragment_fn
-        self.input_dataset = input_dataset
-
-    def copy(self, freeze=False):
-        return self.__class__(
-            input_dataset=self.input_dataset.copy(freeze=freeze),
-            fragment_fn=self.fragment_fn,
-        )
-
-    def __iter__(self):
-        for example in self.input_dataset:
-            for fragment in self.fragment_fn(example):
-                yield fragment
-
-
 class BatchDataset(Dataset):
     """
 
@@ -1514,6 +1495,25 @@ class BatchDataset(Dataset):
         if self.drop_last:
             return int(length)
         return int(np.ceil(length))
+
+
+class UnbatchDataset(Dataset):
+    """
+    Divides a batch of examples into single examples.
+    """
+    def __init__(self, input_dataset):
+        self.input_dataset = input_dataset
+
+    def copy(self, freeze=False):
+        return self.__class__(
+            input_dataset=self.input_dataset.copy(freeze=freeze)
+        )
+
+    def __iter__(self):
+        for batch in self.input_dataset:
+            assert isinstance(batch, (list, tuple, collections.Generator))
+            for example in batch:
+                yield example
 
 
 class DynamicBucketDataset(Dataset):
