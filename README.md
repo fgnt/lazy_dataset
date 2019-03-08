@@ -76,3 +76,20 @@ MapDataset(_pickle.loads)
   MapDataset(<function transform at 0x7ff74efb6620>)
 FilterDataset(<function <lambda> at 0x7ff74efb67b8>)
 ```
+
+
+## Installation
+
+Install it directly with Pip, if you just want to use it:
+
+```bash
+pip install lazy_dataset
+```
+
+If you want to make changes or want the most recent version: Clone the repository and install it as follows:
+
+```bash
+git clone https://github.com/fgnt/lazy_dataset.git
+cd lazy_dataset
+pip install --editable .
+```
