@@ -1114,8 +1114,12 @@ class SliceDataset(Dataset):
             input_dataset:
         """
         self._slice = slice
+        if np.ndim(self._slice) == 2:
+            assert len(self._slice) == 1, self._slice
+            self._slice, = self._slice
+
         try:
-            self.slice = np.arange(len(input_dataset))[self._slice]
+            self.slice = np.arange(len(input_dataset))[self._slice,]
         except IndexError:
             if isinstance(slice, (tuple, list)) and isinstance(slice[0], str):
                 # Assume sequence of str
