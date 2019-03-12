@@ -20,7 +20,7 @@ URL = 'https://github.com/fgnt/lazy_dataset'
 EMAIL = 'boeddeker@nt.upb.de'
 AUTHOR = 'Christoph Boeddeker'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.0.0'
+VERSION = '0.0.1'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
