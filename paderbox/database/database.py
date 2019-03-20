@@ -69,13 +69,14 @@ from cached_property import cached_property
 
 import numpy as np
 
+import lazy_dataset
+from lazy_dataset.core import Dataset
+
 from paderbox import kaldi
 from paderbox.io import load_json
 from paderbox.io.audioread import audioread
 
 from paderbox.database.keys import *
-from paderbox.database.iterator import BaseIterator
-from paderbox.database.iterator import ExamplesIterator
 
 LOG = logging.getLogger('Database')
 
@@ -232,18 +233,13 @@ class DictDatabase:
                 examples[example_id][EXAMPLE_ID] = example_id
                 examples[example_id][DATASET_NAME] = dataset_name
 
-            # Convert values to binary, because deepcopy on binary is faster
-            # This is important for CHiME5
-            examples = {k: pickle.dumps(v) for k, v in examples.items()}
-            it = ExamplesIterator(examples, name=dataset_name)
-            # Apply map function to restore binary data
-            it = it.map(pickle.loads)
+            it = lazy_dataset.from_dict(examples)
 
             self._iterator_weak_ref_dict[dataset_name] = it
 
             iterators.append(it)
 
-        return BaseIterator.concatenate(*iterators)
+        return Dataset.concatenate(*iterators)
 
     def get_bucket_boundaries(
             self, datasets, num_buckets=1, length_transform_fn=lambda x: x
