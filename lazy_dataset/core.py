@@ -879,7 +879,6 @@ class PrefetchDataset(Dataset):
             buffer_size=self.buffer_size,
             backend=self.backend,
             catch_filter_exception=self.catch_filter_exception,
-            freeze=self.freeze,
         )
 
     def __iter__(self):
