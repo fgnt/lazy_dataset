@@ -325,11 +325,11 @@ class KaldiDatabase(DictDatabase):
     @staticmethod
     def get_examples_from_dataset(dataset_path):
         dataset_path = Path(dataset_path)
-        scp = kaldi.io.read_keyed_text_file(dataset_path / 'wav.scp')
-        utt2spk = kaldi.io.read_keyed_text_file(dataset_path / 'utt2spk')
-        text = kaldi.io.read_keyed_text_file(dataset_path / 'text')
+        scp = kaldi.io.load_keyed_lines(dataset_path / 'wav.scp', to_list=True)
+        utt2spk = kaldi.io.load_keyed_lines(dataset_path / 'utt2spk')
+        text = kaldi.io.load_keyed_lines(dataset_path / 'text')
         try:
-            spk2gender = kaldi.io.read_keyed_text_file(
+            spk2gender = kaldi.io.load_keyed_lines(
                 dataset_path / 'spk2gender'
             )
         except FileNotFoundError:
@@ -347,13 +347,13 @@ class KaldiDatabase(DictDatabase):
             else:
                 return s[-2]
 
-        for example_id in scp:
+        for example_id in scp.keys():
             example = defaultdict(dict)
             example[AUDIO_PATH][OBSERVATION] = _audio_path(scp[example_id])
-            example[SPEAKER_ID] = utt2spk[example_id][0]
+            example[SPEAKER_ID] = utt2spk[example_id]
             if spk2gender is not None:
-                example[GENDER] = spk2gender[example[SPEAKER_ID]][0]
-            example[KALDI_TRANSCRIPTION] = ' '.join(text[example_id])
+                example[GENDER] = spk2gender[example[SPEAKER_ID]]
+            example[KALDI_TRANSCRIPTION] = text[example_id]
             examples[example_id] = dict(**example)
         return examples
 
