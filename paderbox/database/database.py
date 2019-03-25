@@ -250,8 +250,13 @@ class DictDatabase:
         return Dataset.concatenate(*iterators)
 
     def get_bucket_boundaries(
-            self, datasets, num_buckets=1, length_transform_fn=lambda x: x
+            self, datasets, num_buckets=1, length_transform_fn=None
     ):
+        if length_transform_fn is None:
+            try:
+                length_transform_fn = self.length_transform_fn
+            except AttributeError:
+                length_transform_fn = lambda x: x
         try:
             lengths = self.get_lengths(datasets, length_transform_fn)
             lengths_list = [length for length in lengths.values()]
@@ -399,14 +404,20 @@ class KaldiDatabase(DictDatabase):
         return dataset_dict
 
     def get_lengths(self, datasets, length_transform_fn=None):
-        if not callable(length_transform_fn):
-            raise NotImplementedError(
-                'Implement a `length_transform_fn` which translates from '
-                'seconds (due to Kaldi) to your desired lengths. You can do so '
-                'by implementing `get_lengths() in your subclass and take care '
-                'of the correct sample rate. It can not be implemented here, '
-                'since the sample rate is not known.'
-            )
+        not_implemented_msg = (
+            'Implement a `length_transform_fn` which translates from '
+            'seconds (due to Kaldi) to your desired lengths. You can do so '
+            'by implementing `get_lengths() in your subclass and take care '
+            'of the correct sample rate. It can not be implemented here, '
+            'since the sample rate is not known.'
+        )
+        if length_transform_fn is None:
+            try:
+                length_transform_fn = self.length_transform_fn
+            except AttributeError:
+                raise NotImplementedError(not_implemented_msg)
+        elif not callable(length_transform_fn):
+            raise NotImplementedError(not_implemented_msg)
 
         if not isinstance(datasets, (tuple, list)):
             datasets = [datasets]
