@@ -402,7 +402,7 @@ class KaldiDatabase(DictDatabase):
                     f'exists: {utt2dur_path}'
                 )
             lengths.update(
-                kaldi.io.read_keyed_text_file(utt2dur_path, to_list=False)
+                kaldi.io.load_keyed_lines(utt2dur_path, to_list=False)
             )
 
         return {k: length_transform_fn(float(v)) for k, v in lengths.items()}
