@@ -328,12 +328,21 @@ class KaldiDatabase(DictDatabase):
         utt_id1 audio_path1
         utt_id2 audio_path2
     """
-    def __init__(self, egs_path: Path):
+    def __init__(self, egs_path: Path, write_num_samples=False):
         self._egs_path = Path(egs_path)
+        self.write_num_samples = write_num_samples
         super().__init__(self.get_dataset_dict_from_kaldi(egs_path))
 
     def __repr__(self):
         return f'{type(self).__name__}: {self._egs_path}'
+
+    @cached_property
+    def database_dict(self):
+        LOG.info(f'Using kaldi recipe at {self._egs_path}')
+        database_dict = self.get_dataset_dict_from_kaldi(self._egs_path)
+        if not self.write_num_samples:
+            return database_dict
+        return self.add_num_samples_to_database_dict(database_dict)
 
     @staticmethod
     def get_examples_from_dataset(dataset_path):
