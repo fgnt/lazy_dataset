@@ -403,6 +403,23 @@ class KaldiDatabase(DictDatabase):
             dataset_dict['datasets'][dataset_name] = examples
         return dataset_dict
 
+    def add_num_samples_to_database_dict(self, database_dict):
+        """Add number of samples directly to the database_dict.
+
+        This is useful when one wants to write the database_dict to a json
+        file in order to instantiate a JsonDatabase from it later.
+        The calculation of the number of samples uses the utt2dur file
+        from the kaldi recipe and the default length_transfom_fn of the
+        database which should be based on the sample rate.
+        """
+        dataset_names = list(database_dict[DATASETS].keys())
+        num_samples_dict = self.get_lengths(dataset_names)
+        for name in dataset_names:
+            for key in database_dict[DATASETS][name].keys():
+                database_dict[DATASETS][name][key][NUM_SAMPLES] = \
+                    num_samples_dict[key]
+        return database_dict
+
     def get_lengths(self, datasets, length_transform_fn=None):
         not_implemented_msg = (
             'Implement a `length_transform_fn` which translates from '
