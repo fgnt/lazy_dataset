@@ -81,6 +81,10 @@ from paderbox.database.keys import *
 LOG = logging.getLogger('Database')
 
 
+class MalformedDatasetError(Exception):
+    pass
+
+
 def to_list(x, item_type=None):
     """
     Note:
@@ -350,7 +354,12 @@ class KaldiDatabase(DictDatabase):
         for example_id in scp.keys():
             example = defaultdict(dict)
             example[AUDIO_PATH][OBSERVATION] = _audio_path(scp[example_id])
-            example[SPEAKER_ID] = utt2spk[example_id]
+            try:
+                example[SPEAKER_ID] = utt2spk[example_id]
+            except KeyError as e:
+                raise MalformedDatasetError(
+                    f'Example id {example_id} not found in utt2spk.\n'
+                    f'Skipping dataset at path {dataset_path}.')
             if spk2gender is not None:
                 example[GENDER] = spk2gender[example[SPEAKER_ID]]
             example[KALDI_TRANSCRIPTION] = text[example_id]
@@ -377,7 +386,11 @@ class KaldiDatabase(DictDatabase):
         for wav_scp_file in scp_paths:
             dataset_path = Path(wav_scp_file).parent
             dataset_name = dataset_path.name
-            examples = cls.get_examples_from_dataset(dataset_path)
+            try:
+                examples = cls.get_examples_from_dataset(dataset_path)
+            except MalformedDatasetError as e:
+                LOG.warning(' '.join(e.args))
+                continue
             dataset_dict['datasets'][dataset_name] = examples
         return dataset_dict
 
