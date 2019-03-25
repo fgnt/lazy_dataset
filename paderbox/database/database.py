@@ -124,7 +124,11 @@ class DictDatabase:
 
         :param json_path: path to database JSON
         """
-        self.database_dict = database_dict
+        self._database_dict = database_dict
+
+    @property
+    def database_dict(self):
+        return self._database_dict
 
     @property
     def dataset_names(self):
