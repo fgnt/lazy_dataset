@@ -290,6 +290,10 @@ class Database:
 
 class DictDatabase(Database):
     def __init__(self, database_dict: dict):
+        """A simple database class intended to hold a given database_dict.
+
+        :param database_dict: A json serializeable database dictionary.
+        """
         self._database_dict = database_dict
         super().__init__()
 
@@ -316,9 +320,10 @@ class JsonDatabase(Database):
         return f'{type(self).__name__}({self._json_path!r})'
 
 
-    """
-    Which files are expected from directory to be a Kaldi database?
 class KaldiDatabase(Database):
+    """A database representing information from a kaldi recipe directory.
+
+    Which files are expected from the egs directory to be a Kaldi database?
     - data
         - filst1
             - wav.scp with format: <utterance_id> <audio_path>
