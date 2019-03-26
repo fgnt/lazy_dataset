@@ -248,13 +248,8 @@ class Database:
         return Dataset.concatenate(*iterators)
 
     def get_bucket_boundaries(
-            self, datasets, num_buckets=1, length_transform_fn=None
+            self, datasets, num_buckets=1, length_transform_fn=lambda x: x
     ):
-        if length_transform_fn is None:
-            try:
-                length_transform_fn = self.length_transform_fn
-            except AttributeError:
-                length_transform_fn = lambda x: x
         try:
             lengths = self.get_lengths(datasets, length_transform_fn)
             lengths_list = [length for length in lengths.values()]
@@ -353,7 +348,17 @@ class KaldiDatabase(Database):
     def database_dict(self):
         LOG.info(f'Using kaldi recipe at {self._egs_path}')
         database_dict = self.get_dataset_dict_from_kaldi(self._egs_path)
-        return self.add_num_samples_to_database_dict(database_dict)
+        return self._add_num_samples_to_database_dict(database_dict)
+
+    @classmethod
+    def length_transform_fn(cls, length):
+        raise NotImplementedError(
+            'Implement a `length_transform_fn` which translates from '
+            'seconds (due to Kaldi) to your desired lengths. '
+            'It can not be implemented here '
+            'since the sample rate is not known.'
+        )
+
 
     @staticmethod
     def get_examples_from_dataset(dataset_path):
@@ -395,6 +400,23 @@ class KaldiDatabase(Database):
             examples[example_id] = dict(**example)
         return examples
 
+    def get_lengths(self, datasets, length_transform_fn=lambda x: x):
+        if not isinstance(datasets, (tuple, list)):
+            datasets = [datasets]
+        lengths = dict()
+        for dataset in datasets:
+            try:
+                # assume that num_samples are present
+                dataset_lengths = {
+                    k: length_transform_fn(v[NUM_SAMPLES])
+                    for k, v in self.database_dict[DATASETS][dataset].items()}
+            except (KeyError, AttributeError):
+                raise NotImplementedError(
+                    'No length information present. '
+                    'Map with add_num_samples method instead.')
+            lengths.update(dataset_lengths)
+        return lengths
+
     def add_num_samples(self, example):
         assert (
             AUDIO_DATA in example
@@ -423,7 +445,7 @@ class KaldiDatabase(Database):
             dataset_dict['datasets'][dataset_name] = examples
         return dataset_dict
 
-    def add_num_samples_to_database_dict(self, database_dict):
+    def _add_num_samples_to_database_dict(self, database_dict):
         """Add number of samples directly to the database_dict.
 
         This is useful when one wants to write the database_dict to a json
@@ -434,7 +456,7 @@ class KaldiDatabase(Database):
         """
         dataset_names = list(database_dict[DATASETS].keys())
         try:
-            num_samples_dict = self.get_lengths(dataset_names)
+            num_samples_dict = self._get_lengths_from_kaldi(database_dict)
         except NotImplementedError as e:
             LOG.warning('num_samples information not added to database_dict.\n'
                         ' This is caused by the following exception:\n'
@@ -446,37 +468,21 @@ class KaldiDatabase(Database):
                     num_samples_dict[key]
         return database_dict
 
-    def get_lengths(self, datasets, length_transform_fn=None):
-        not_implemented_msg = (
-            'Implement a `length_transform_fn` which translates from '
-            'seconds (due to Kaldi) to your desired lengths. You can do so '
-            'by implementing `get_lengths() in your subclass and take care '
-            'of the correct sample rate. It can not be implemented here, '
-            'since the sample rate is not known.'
-        )
-        if length_transform_fn is None:
-            try:
-                length_transform_fn = self.length_transform_fn
-            except AttributeError:
-                raise NotImplementedError(not_implemented_msg)
-        elif not callable(length_transform_fn):
-            raise NotImplementedError(not_implemented_msg)
-
-        if not isinstance(datasets, (tuple, list)):
-            datasets = [datasets]
+    def _get_lengths_from_kaldi(self, database_dict):
         lengths = dict()
-        for dataset in datasets:
+        for dataset in database_dict[DATASETS].keys():
+            # read out utt2dur file for lengths
             utt2dur_path = self._egs_path / 'data' / dataset / 'utt2dur'
             if not utt2dur_path.is_file():
                 raise NotImplementedError(
                     'Lengths only available for bucketing if utt2dur file '
                     f'exists: {utt2dur_path}'
                 )
-            lengths.update(
-                kaldi.io.load_keyed_lines(utt2dur_path, to_list=False)
-            )
-
-        return {k: length_transform_fn(float(v)) for k, v in lengths.items()}
+            dataset_lengths = {
+                k: self.length_transform_fn(float(v))
+                for k, v in kaldi.io.load_keyed_lines(utt2dur_path).items()}
+            lengths.update(dataset_lengths)
+        return lengths
 
 
 class HybridASRDatabaseTemplate:
