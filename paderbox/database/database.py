@@ -425,15 +425,14 @@ class KaldiDatabase(Database):
             'No audio data found in example. Make sure to map with '
             '`AudioReader` before adding `num_samples`.'
         )
-        example[NUM_SAMPLES] \
-            = example[AUDIO_DATA][OBSERVATION].shape[-1]
+        example[NUM_SAMPLES] = example[AUDIO_DATA][OBSERVATION].shape[-1]
         return example
 
     @classmethod
     def get_dataset_dict_from_kaldi(cls, egs_path):
         egs_path = Path(egs_path)
         scp_paths = glob.glob(str(egs_path / 'data' / '*' / 'wav.scp'))
-        dataset_dict = {'datasets': {}}
+        dataset_dict = {DATASETS: {}}
         for wav_scp_file in scp_paths:
             dataset_path = Path(wav_scp_file).parent
             dataset_name = dataset_path.name
@@ -442,7 +441,7 @@ class KaldiDatabase(Database):
             except MalformedDatasetError as e:
                 LOG.warning(' '.join(e.args))
                 continue
-            dataset_dict['datasets'][dataset_name] = examples
+            dataset_dict[DATASETS][dataset_name] = examples
         return dataset_dict
 
     def _add_num_samples_to_database_dict(self, database_dict):
