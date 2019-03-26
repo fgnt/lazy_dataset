@@ -329,9 +329,8 @@ class KaldiDatabase(DictDatabase):
         utt_id1 audio_path1
         utt_id2 audio_path2
     """
-    def __init__(self, egs_path: Path, write_num_samples=False):
+    def __init__(self, egs_path: Path):
         self._egs_path = Path(egs_path)
-        self.write_num_samples = write_num_samples
         super().__init__(self.get_dataset_dict_from_kaldi(egs_path))
 
     def __repr__(self):
@@ -341,8 +340,6 @@ class KaldiDatabase(DictDatabase):
     def database_dict(self):
         LOG.info(f'Using kaldi recipe at {self._egs_path}')
         database_dict = self.get_dataset_dict_from_kaldi(self._egs_path)
-        if not self.write_num_samples:
-            return database_dict
         return self.add_num_samples_to_database_dict(database_dict)
 
     @staticmethod
@@ -423,7 +420,13 @@ class KaldiDatabase(DictDatabase):
         database which should be based on the sample rate.
         """
         dataset_names = list(database_dict[DATASETS].keys())
-        num_samples_dict = self.get_lengths(dataset_names)
+        try:
+            num_samples_dict = self.get_lengths(dataset_names)
+        except NotImplementedError as e:
+            LOG.warning('num_samples information not added to database_dict.\n'
+                        ' This is caused by the following exception:\n'
+                        ' '.join(e.args))
+            return database_dict
         for name in dataset_names:
             for key in database_dict[DATASETS][name].keys():
                 database_dict[DATASETS][name][key][NUM_SAMPLES] = \
