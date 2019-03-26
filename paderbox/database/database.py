@@ -185,12 +185,11 @@ class Database:
             return self.database_dict[DATASETS][dataset_name]
 
     @cached_property
-    def _iterator_weak_ref_dict(self):
+    def _dataset_weak_ref_dict(self):
         return weakref.WeakValueDictionary()
 
-    def get_iterator_by_names(self, dataset_names=None):
-        """
-        Returns a single Iterator over specified datasets.
+    def get_dataset_by_names(self, dataset_names=None):
+        """Return a single lazy dataset over specified datasets.
 
         Adds the example_id and dataset_name to each example dict.
 
@@ -204,17 +203,17 @@ class Database:
             )
 
         dataset_names = to_list(dataset_names, item_type=str)
-        iterators = list()
+        datasets = list()
         for dataset_name in dataset_names:
-            # Resulting iterator is immutable anyway due to pickle a few lines
+            # Resulting dataset is immutable anyway due to pickle a few lines
             # further down. This code here avoids to store the resulting
-            # iterator more than once in memory. Discuss with CBJ for details.
+            # dataset more than once in memory. Discuss with CBJ for details.
             try:
-                it = self._iterator_weak_ref_dict[dataset_name]
+                ds = self._dataset_weak_ref_dict[dataset_name]
             except KeyError:
                 pass
             else:
-                iterators.append(it)
+                datasets.append(ds)
                 continue
 
             try:
@@ -239,13 +238,21 @@ class Database:
                 examples[example_id][EXAMPLE_ID] = example_id
                 examples[example_id][DATASET_NAME] = dataset_name
 
-            it = lazy_dataset.from_dict(examples)
+            ds = lazy_dataset.from_dict(examples)
 
-            self._iterator_weak_ref_dict[dataset_name] = it
+            self._dataset_weak_ref_dict[dataset_name] = ds
 
-            iterators.append(it)
+            datasets.append(ds)
+
 
         return Dataset.concatenate(*iterators)
+    def get_iterator_by_names(self, dataset_names=None):
+        """Alias of get_dataset_by_names.
+
+        Iterators are lazy datasets now.
+        This provides compatiblity with the way things used to be.
+        """
+        return self.get_dataset_by_names(dataset_names)
 
     def get_bucket_boundaries(
             self, datasets, num_buckets=1, length_transform_fn=lambda x: x
