@@ -118,17 +118,14 @@ def to_list(x, item_type=None):
         return list(x)
 
 
-class DictDatabase:
-    def __init__(self, database_dict: dict):
-        """
+class Database:
+    """Base class for databases.
 
-        :param json_path: path to database JSON
-        """
-        self._database_dict = database_dict
-
+    This class is abstract!"""
     @property
     def database_dict(self):
-        return self._database_dict
+        raise NotImplementedError(
+            f'Override this property in {self.__class__.__name__}!')
 
     @property
     def dataset_names(self):
@@ -291,13 +288,24 @@ class DictDatabase:
             raise NotImplementedError
 
 
-class JsonDatabase(DictDatabase):
+class DictDatabase(Database):
+    def __init__(self, database_dict: dict):
+        self._database_dict = database_dict
+        super().__init__()
+
+    @property
+    def database_dict(self):
+        return self._database_dict
+
+
+class JsonDatabase(Database):
     def __init__(self, json_path: [str, Path]):
         """
 
         :param json_path: path to database JSON
         """
         self._json_path = json_path
+        super().__init__()
 
     @cached_property
     def database_dict(self):
@@ -308,9 +316,9 @@ class JsonDatabase(DictDatabase):
         return f'{type(self).__name__}({self._json_path!r})'
 
 
-class KaldiDatabase(DictDatabase):
     """
     Which files are expected from directory to be a Kaldi database?
+class KaldiDatabase(Database):
     - data
         - filst1
             - wav.scp with format: <utterance_id> <audio_path>
@@ -331,7 +339,7 @@ class KaldiDatabase(DictDatabase):
     """
     def __init__(self, egs_path: Path):
         self._egs_path = Path(egs_path)
-        super().__init__(self.get_dataset_dict_from_kaldi(egs_path))
+        super().__init__()
 
     def __repr__(self):
         return f'{type(self).__name__}: {self._egs_path}'
