@@ -29,7 +29,13 @@ def test_sort():
     ds = get_dataset()
     example_ids = [ex['example_id'] for ex in ds]
     assert example_ids == 'b c a e d'.split()
+
     ds = ds.sort(sort_fn)
+    example_ids = [ex['example_id'] for ex in ds]
+    assert example_ids == 'a b c d e'.split()
+
+    ds = get_dataset()
+    ds = ds.sort()
     example_ids = [ex['example_id'] for ex in ds]
     assert example_ids == 'a b c d e'.split()
 

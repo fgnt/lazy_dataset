@@ -463,34 +463,48 @@ class Dataset:
         slices = np.array_split(np.arange(len(self)), sections)
         return [self[list(s)] for s in slices]
 
-    def sort(self, key_fn, sort_fn=sorted, reverse=False):
+    def sort(self, key_fn=None, sort_fn=sorted, reverse=False):
         """
         Sorts the dataset. The sort key is extracted from each example with
         the key_fn. The sort_fn allows to influence the sorting,
         e.g. natsort.natsorted. It is expected to have reverse as an argument.
 
+        When the key_fn is None, the returned iterator is sorted according to
+        `sort_fn(self.keys())`.
+
         >>> examples = {'a': {'x': 1}, 'b': {'x': 3},  'c': {'x': 12}, 'd': {'x': 2}}
         >>> it = DictDataset(examples)
+
+        Sort by value
         >>> it_sorted = it.sort(lambda ex: ex['x'])
         >>> it_sorted
           DictDataset(len=4)
         SliceDataset(['a', 'd', 'b', 'c'])
         >>> print(it_sorted.slice)
         (0, 3, 1, 2)
-        >>> list(it_sorted)
-        [{'x': 1}, {'x': 2}, {'x': 3}, {'x': 12}]
+        >>> dict(it_sorted)
+        {'a': {'x': 1}, 'd': {'x': 2}, 'b': {'x': 3}, 'c': {'x': 12}}
+
+        Sort reversed by value
         >>> it_sorted = it.sort(lambda ex: ex['x'], reverse=True)
-        >>> list(it_sorted)
-        [{'x': 12}, {'x': 3}, {'x': 2}, {'x': 1}]
+        >>> dict(it_sorted)
+        {'c': {'x': 12}, 'b': {'x': 3}, 'd': {'x': 2}, 'a': {'x': 1}}
+
+        Sort by example key
+        >>> dict(it_sorted.sort())
+        {'a': {'x': 1}, 'b': {'x': 3}, 'c': {'x': 12}, 'd': {'x': 2}}
         """
-        sort_values = [key_fn(self[key]) for key in self.keys()]
-        sort_order = [
-            key
-            for _, key in sort_fn(
-                zip(sort_values, self.keys()),
-                reverse=reverse,
-            )
-        ]
+        if key_fn is None:
+            sort_order = sort_fn(self.keys())
+        else:
+            sort_values = [key_fn(self[key]) for key in self.keys()]
+            sort_order = [
+                key
+                for _, key in sort_fn(
+                    zip(sort_values, self.keys()),
+                    reverse=reverse,
+                )
+            ]
         return self[tuple(sort_order)]
 
     def shard(self, num_shards, shard_index):
