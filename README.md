@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/fgnt/lazy_dataset/blob/master/LICENSE)
 
 Lazy_dataset is a helper to deal with large datasets that do not fit into memory.
-It allows to define transformations that are applied lazy,
+It allows to define transformations that are applied lazily,
 (e.g. a mapping function to read data from HDD). When someone iterates over the dataset all
 transformations are applied.
 
@@ -14,7 +14,7 @@ Supported transformations:
  - `dataset['example_id']` Get that example that has the example id `'example_id'`.
  - `dataset[10:20]`: Get a sub dataset that contains only the examples in the slice 10 to 20.
  - `dataset.filter(filter_fn, lazy=True)` Drops examples where `filter_fn(example)` is false ([builtins.filter](https://docs.python.org/3/library/functions.html#filter)).
- - `dataset.concatenate(*others)`: Concaternates two or more datasets ([numpy.concatenate](https://docs.scipy.org/doc/numpy-1.14.0/reference/generated/numpy.concatenate.html))
+ - `dataset.concatenate(*others)`: Concatenates two or more datasets ([numpy.concatenate](https://docs.scipy.org/doc/numpy-1.14.0/reference/generated/numpy.concatenate.html))
  - `dataset.shuffle(reshuffle=False)`: Shuffles the dataset. When `reshuffle` is `True` it shuffles each time when you iterate over the data.
  - `dataset.tile(reps, shuffle=False)`: Repeats the dataset `reps` times and concatenates it ([numpy.tile](https://docs.scipy.org/doc/numpy/reference/generated/numpy.tile.html))
  - `dataset.groupby(group_fn)`: Groups examples together. In contrast to `itertools.groupby` a sort is not nessesary, like in pandas ([itertools.groupby](https://docs.python.org/3/library/itertools.html#itertools.groupby), [pandas.DataFrame.groupby](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.groupby.html))
