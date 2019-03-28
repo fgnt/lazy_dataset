@@ -61,7 +61,7 @@ database, i.e. dt_simu_c0123.
 """
 import glob
 import logging
-import pickle
+import functools
 from collections import defaultdict
 from pathlib import Path
 import weakref
@@ -152,21 +152,25 @@ class Database:
 
     @cached_property
     def datasets(self):
-        """allows creation of iterator with point notation"""
-        dataset_names = self.dataset_names
+        """Allows creation of iterator with point notation."""
         return type(
             'DatasetsCollection',
             (object,),
             {
-                # 'abc': property(lambda self: 'cdf'),
-                '__getitem__': (lambda _, dataset_name:
-                                self.get_iterator_by_names(dataset_name)),
-                'keys': (lambda _: dataset_names),
+                '__getitem__': (
+                    lambda _, dataset_name:
+                    self.get_iterator_by_names(dataset_name)
+                ),
+                'keys': (lambda _: self.dataset_names),
                 **{
-                    # k=k ensures that each property olds k and does not take
-                    # it from the outer scope
-                    k: property(lambda self, k=k: self[k])
-                    for k in dataset_names
+                    # We need to communicate `k` via the lambda function
+                    # signature. Otherwise, it will refer to an already
+                    # updated `k` once the lambda function is called.
+                    k: property(
+                        lambda inner_self, dataset_name=k:
+                        inner_self[dataset_name]
+                    )
+                    for k in self.dataset_names
                 }
             }
         )()
