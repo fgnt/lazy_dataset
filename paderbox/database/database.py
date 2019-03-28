@@ -61,7 +61,7 @@ database, i.e. dt_simu_c0123.
 """
 import glob
 import logging
-import functools
+import operator
 from collections import defaultdict
 from pathlib import Path
 import weakref
@@ -163,14 +163,10 @@ class Database:
                 ),
                 'keys': (lambda _: self.dataset_names),
                 **{
-                    # We need to communicate `k` via the lambda function
-                    # signature. Otherwise, it will refer to an already
-                    # updated `k` once the lambda function is called.
-                    k: property(
-                        lambda inner_self, dataset_name=k:
-                        inner_self[dataset_name]
-                    )
-                    for k in self.dataset_names
+                    # Create a new property method for each key, which
+                    # resolves to `inner_self[dataset_name]`.
+                    dataset_name: property(operator.itemgetter(dataset_name))
+                    for dataset_name in self.dataset_names
                 }
             }
         )()
