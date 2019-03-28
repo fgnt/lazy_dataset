@@ -115,6 +115,21 @@ def test_filter():
         _ = iterator[:1]
 
 
+def test_concatenate_function():
+    ds_train = get_dataset()
+    ds_predict = get_dataset_predict()
+
+    ds = lazy_dataset.concatenate(ds_train, ds_predict)
+    example_ids = [e['example_id'] for e in ds]
+    assert example_ids == [f'example_id_{i}' for i in range(1, 6)]
+
+    assert ds['example_id_1']['example_id'] == 'example_id_1'
+    assert ds['example_id_5']['example_id'] == 'example_id_5'
+    assert ds[0]['example_id'] == 'example_id_1'
+    assert ds[-1]['example_id'] == 'example_id_5'
+    assert ds[:1][0]['example_id'] == 'example_id_1'
+
+
 def test_concatenate():
     ds_train = get_dataset()
     ds_predict = get_dataset_predict()
