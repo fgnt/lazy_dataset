@@ -161,8 +161,11 @@ class Database:
                 # 'abc': property(lambda self: 'cdf'),
                 '__getitem__': (lambda _, dataset_name:
                                 self.get_iterator_by_names(dataset_name)),
+                'keys': (lambda _: dataset_names),
                 **{
-                    k: property(lambda self: self[k])
+                    # k=k ensures that each property olds k and does not take
+                    # it from the outer scope
+                    k: property(lambda self, k=k: self[k])
                     for k in dataset_names
                 }
             }
