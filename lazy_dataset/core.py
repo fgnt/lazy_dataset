@@ -95,6 +95,8 @@ def concatenate(*datasets):
         raise ValueError('Need at least one dataset to concatenate!')
     if not all(isinstance(dataset, Dataset) for dataset in datasets):
         raise TypeError('All input arguments must be datasets!')
+    if len(datasets) == 1:
+        return datasets[0]
     return ConcatenateDataset(*datasets)
 
 
