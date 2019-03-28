@@ -850,9 +850,11 @@ class CatchExceptionDataset(Dataset):
             return super().__getitem__(item)
 
     def __iter__(self):
-        for i in range(len(self.input_dataset)):
+        input_dataset = self.input_dataset.copy(freeze=True)
+
+        for i in range(len(input_dataset)):
             try:
-                yield self.input_dataset[i]
+                yield input_dataset[i]
             except self.exceptions as e:
                 if self.warn:
                     msg = repr(e)
