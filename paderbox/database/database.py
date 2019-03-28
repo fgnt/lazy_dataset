@@ -191,7 +191,7 @@ class Database:
     def _dataset_weak_ref_dict(self):
         return weakref.WeakValueDictionary()
 
-    def get_dataset_by_names(self, dataset_names=None):
+    def get_dataset(self, names=None):
         """Return a single lazy dataset over specified datasets.
 
         Adds the example_id and dataset_name to each example dict.
@@ -200,19 +200,19 @@ class Database:
             If None an iterator over the complete databases will be returned.
         :return:
         """
-        if dataset_names is None:
+        if names is None:
             raise TypeError(
                 f'Missing dataset_names, use e.g.: {self.dataset_names}'
             )
 
-        dataset_names = to_list(dataset_names, item_type=str)
+        names = to_list(names, item_type=str)
         datasets = list()
-        for dataset_name in dataset_names:
+        for name in names:
             # Resulting dataset is immutable anyway due to pickle a few lines
             # further down. This code here avoids to store the resulting
             # dataset more than once in memory. Discuss with CBJ for details.
             try:
-                ds = self._dataset_weak_ref_dict[dataset_name]
+                ds = self._dataset_weak_ref_dict[name]
             except KeyError:
                 pass
             else:
@@ -220,30 +220,30 @@ class Database:
                 continue
 
             try:
-                examples = self._get_dataset_from_database_dict(dataset_name)
+                examples = self._get_dataset_from_database_dict(name)
             except KeyError:
                 import difflib
                 similar = difflib.get_close_matches(
-                    dataset_name,
+                    name,
                     self.dataset_names,
                     n=5,
                     cutoff=0,
                 )
-                raise KeyError(dataset_name, f'close_matches: {similar}', self)
+                raise KeyError(name, f'close_matches: {similar}', self)
             if len(examples) == 0:
                 # When somebody need empty datasets, add an option to this
                 # function to allow empty datasets.
                 raise RuntimeError(
-                    f'The requested dataset {dataset_name!r} is empty. '
+                    f'The requested dataset {name!r} is empty. '
                 )
 
             for example_id in examples.keys():
                 examples[example_id][EXAMPLE_ID] = example_id
-                examples[example_id][DATASET_NAME] = dataset_name
+                examples[example_id][DATASET_NAME] = name
 
             ds = lazy_dataset.from_dict(examples)
 
-            self._dataset_weak_ref_dict[dataset_name] = ds
+            self._dataset_weak_ref_dict[name] = ds
 
             datasets.append(ds)
 
@@ -255,7 +255,7 @@ class Database:
         Iterators are lazy datasets now.
         This provides compatiblity with the way things used to be.
         """
-        return self.get_dataset_by_names(dataset_names)
+        return self.get_dataset(dataset_names)
 
     def get_bucket_boundaries(
             self, datasets, num_buckets=1, length_transform_fn=lambda x: x
