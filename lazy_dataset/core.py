@@ -83,6 +83,21 @@ def from_list(examples, immutable_warranty='pickle'):
     return ds
 
 
+def concatenate(*datasets):
+    """Create a new Dataset by concatenation of all passed datasets.
+
+    Args:
+        datasets: List of datasets. Must be
+    Returns: Concatenation of all input datasets.
+
+    """
+    if len(datasets) == 0:
+        raise ValueError('Need at least one dataset to concatenate!')
+    if not all(isinstance(dataset, Dataset) for dataset in datasets):
+        raise TypeError('All input arguments must be datasets!')
+    return ConcatenateDataset(*datasets)
+
+
 class FilterException(Exception):
     """
     Special Exception for the Dataset to indicate that this example should be
