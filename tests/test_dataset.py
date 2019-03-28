@@ -130,6 +130,18 @@ def test_concatenate_function():
     assert ds[:1][0]['example_id'] == 'example_id_1'
 
 
+def test_concatenate_function_raises_on_empty_list():
+    with pytest.raises(ValueError):
+        lazy_dataset.concatenate()
+
+
+def test_concatenate_function_raises_on_non_dataset_instances():
+    ds_train = get_dataset()
+    not_a_ds = dict()
+    with pytest.raises(TypeError):
+        lazy_dataset.concatenate(ds_train, not_a_ds)
+
+
 def test_concatenate():
     ds_train = get_dataset()
     ds_predict = get_dataset_predict()
