@@ -70,7 +70,6 @@ from cached_property import cached_property
 import numpy as np
 
 import lazy_dataset
-from lazy_dataset.core import ConcatenateDataset
 
 from paderbox import kaldi
 from paderbox.io import load_json
@@ -247,7 +246,7 @@ class Database:
 
             datasets.append(ds)
 
-        return ConcatenateDataset(*datasets)
+        return lazy_dataset.concatenate(*datasets)
 
     def get_iterator_by_names(self, dataset_names=None):
         """Alias of get_dataset_by_names.
