@@ -86,6 +86,9 @@ def from_list(examples, immutable_warranty='pickle'):
 def concatenate(*datasets):
     """Create a new Dataset by concatenation of all passed datasets.
 
+    concatenate(ds1, ds2, ...)
+    concatenate((ds1, ds2, ...))
+
     Args:
         datasets: List of datasets. Must be
     Returns: Concatenation of all input datasets.
@@ -93,6 +96,8 @@ def concatenate(*datasets):
     """
     if len(datasets) == 0:
         raise ValueError('Need at least one dataset to concatenate!')
+    if len(datasets) == 1 and isinstance(datasets[0], (tuple, list)):
+        datasets, = datasets
     if not all(isinstance(dataset, Dataset) for dataset in datasets):
         raise TypeError('All input arguments must be datasets!')
     if len(datasets) == 1:
@@ -315,6 +320,9 @@ class Dataset:
         """
         Concatenate this dataset with others. keys need to be unambiguous.
 
+        concatenate(self, ds1, ds2, ...)
+        concatenate(self, (ds1, ds2, ...))
+
         Args:
             *others: list of datasets to be concatenated
 
@@ -324,6 +332,8 @@ class Dataset:
         """
         if len(others) == 0:
             return self
+        if len(others) == 1 and isinstance(others[0], (tuple, list)):
+            others, = others
         return ConcatenateDataset(self, *others)
 
     def zip(self, *others):
