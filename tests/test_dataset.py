@@ -129,6 +129,16 @@ def test_concatenate_function():
     assert ds[-1]['example_id'] == 'example_id_5'
     assert ds[:1][0]['example_id'] == 'example_id_1'
 
+    ds = lazy_dataset.concatenate([ds_train, ds_predict])
+    example_ids = [e['example_id'] for e in ds]
+    assert example_ids == [f'example_id_{i}' for i in range(1, 6)]
+
+    assert ds['example_id_1']['example_id'] == 'example_id_1'
+    assert ds['example_id_5']['example_id'] == 'example_id_5'
+    assert ds[0]['example_id'] == 'example_id_1'
+    assert ds[-1]['example_id'] == 'example_id_5'
+    assert ds[:1][0]['example_id'] == 'example_id_1'
+
 
 def test_concatenate_function_raises_on_empty_list():
     with pytest.raises(ValueError):
@@ -147,6 +157,16 @@ def test_concatenate():
     ds_predict = get_dataset_predict()
 
     ds = ds_train.concatenate(ds_predict)
+    example_ids = [e['example_id'] for e in ds]
+    assert example_ids == [f'example_id_{i}' for i in range(1, 6)]
+
+    assert ds['example_id_1']['example_id'] == 'example_id_1'
+    assert ds['example_id_5']['example_id'] == 'example_id_5'
+    assert ds[0]['example_id'] == 'example_id_1'
+    assert ds[-1]['example_id'] == 'example_id_5'
+    assert ds[:1][0]['example_id'] == 'example_id_1'
+
+    ds = ds_train.concatenate([ds_predict])
     example_ids = [e['example_id'] for e in ds]
     assert example_ids == [f'example_id_{i}' for i in range(1, 6)]
 
