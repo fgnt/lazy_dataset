@@ -73,7 +73,7 @@ import lazy_dataset
 
 from paderbox import kaldi
 from paderbox.io import load_json
-from paderbox.io.audioread import audioread
+from paderbox.io.audioread import load_audio
 
 from paderbox.database.keys import *
 
@@ -272,7 +272,7 @@ class Database:
 
     @property
     def read_fn(self):
-        return lambda x: audioread(x)[0]
+        return lambda x: load_audio(x)
 
     def get_lengths(self, datasets, length_transform_fn=lambda x: x):
         it = self.get_iterator_by_names(datasets)
