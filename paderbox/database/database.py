@@ -62,6 +62,7 @@ database, i.e. dt_simu_c0123.
 import glob
 import logging
 import operator
+import os
 from collections import defaultdict
 from pathlib import Path
 import weakref
@@ -356,6 +357,9 @@ class KaldiDatabase(Database):
     @cached_property
     def database_dict(self):
         LOG.info(f'Using kaldi recipe at {self._egs_path}')
+        # Wrong value of e.g. $KALDI_ROOT may result in improper egs path.
+        assert os.path.isdir(self._egs_path), \
+            f'egs path not set properly! Current value: {self._egs_path}'
         database_dict = self.get_dataset_dict_from_kaldi(self._egs_path)
         return self._add_num_samples_to_database_dict(database_dict)
 
