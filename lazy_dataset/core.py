@@ -527,9 +527,9 @@ class Dataset:
         >>> it_sorted = it.sort(lambda ex: ex['x'])
         >>> it_sorted
           DictDataset(len=4)
-        SliceDataset(['a', 'd', 'b', 'c'])
+        SliceDataset([0, 3, 1, 2])
         >>> print(it_sorted.slice)
-        (0, 3, 1, 2)
+        [0 3 1 2]
         >>> dict(it_sorted)
         {'a': {'x': 1}, 'd': {'x': 2}, 'b': {'x': 3}, 'c': {'x': 12}}
 
@@ -545,15 +545,15 @@ class Dataset:
         if key_fn is None:
             sort_order = sort_fn(self.keys())
         else:
-            sort_values = [key_fn(self[key]) for key in self.keys()]
+            sort_values = [key_fn(example) for example in self]
             sort_order = [
-                key
-                for _, key in sort_fn(
-                    zip(sort_values, self.keys()),
+                index
+                for _, index in sort_fn(
+                    zip(sort_values, itertools.count()),
                     reverse=reverse,
                 )
             ]
-        return self[tuple(sort_order)]
+        return self[sort_order]
 
     def shard(self, num_shards, shard_index):
         """
