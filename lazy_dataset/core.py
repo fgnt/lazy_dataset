@@ -148,7 +148,8 @@ class Dataset:
             return SliceDataset(item, self)
         elif isinstance(item, bytes):
             raise NotImplementedError(
-                f'This is not implemented for an bytes objext. Use bytes.decode() to convert it to an str.\n'
+                f'This is not implemented for an bytes objext. '
+                f'Use bytes.decode() to convert it to an str.\n'
                 f'__getitem__ is not implemented for {self.__class__}[{item!r}],\n'
                 f'where type({item!r}) == {type(item)} '
                 f'self: \n{self!r}'
@@ -403,6 +404,8 @@ class Dataset:
                 If True, shuffle on each iteration, but disable indexing.
                 If False, single shuffle, but support indexing.
             rng:
+                instance of np.random.RandomState.
+                When None, fallback to np.random.
             buffer_size:
 
         Returns:
@@ -509,7 +512,7 @@ class Dataset:
                 f'split into {sections} sections.'
             )
         slices = np.array_split(np.arange(len(self)), sections)
-        return [self[list(s)] for s in slices]
+        return [self[s] for s in slices]
 
     def sort(self, key_fn=None, sort_fn=sorted, reverse=False):
         """
@@ -1062,13 +1065,15 @@ class ReShuffleDataset(Dataset):
     def __getitem__(self, item):
         if isinstance(item, str):
             return self.input_dataset[item]
-        elif isinstance(item, (numbers.Integral, slice, tuple, list)):
+        elif isinstance(item, numbers.Integral):
             raise TypeError(
                 f'{self.__class__.__name__} does not support '
-                f'integers and slices as argument of __getitem__.'
+                f'integers as argument of __getitem__.'
                 f'Got argument "{item}" of type {type(item)}.'
             )
         else:
+            # Let super().__getitem__(...) raise the Exception when item is a
+            # slice, tuple or list.
             return super().__getitem__(item)
 
 
