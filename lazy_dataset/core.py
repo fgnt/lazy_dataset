@@ -5,13 +5,12 @@ import textwrap
 import operator
 from copy import deepcopy
 import itertools
-import random as rnd
+import random
+import collections
 
 import numpy as np
 
 LOG = logging.getLogger('lazy_dataset')
-
-import collections
 
 
 def new(examples, immutable_warranty='pickle'):
@@ -1124,7 +1123,7 @@ class LocalShuffleDataset(Dataset):
                     print('Shuffle Buffer filled.')
                     buffer_filled = True
                 yield buffer.pop(int(np.random.choice(self.buffer_size)))
-        rnd.shuffle(buffer)
+        random.shuffle(buffer)
         for element in buffer:
             yield element
 
