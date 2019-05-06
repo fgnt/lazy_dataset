@@ -237,3 +237,37 @@ def test_slice():
     _ = ds[:2]
     _ = ds[:1]
     _ = ds[:0]  # Should this work? Work for list.
+
+
+def test_filter_without_keys():
+    examples = get_examples()
+    ds = lazy_dataset.from_list(list(examples.values()))
+
+    ds_slice = ds[:2]
+    example_ids = [e['example_id'] for e in ds_slice]
+    assert example_ids == ['example_id_1', 'example_id_2']
+
+    ds_filter = ds.filter(lambda e: int(e['example_id'].split('_')[-1])<2)
+
+    example_ids = [e['example_id'] for e in ds_filter]
+    assert example_ids == ['example_id_1']
+
+
+def test_filter_with_reshuffle():
+    examples = get_examples()
+    ds = lazy_dataset.from_list(list(examples.values()))
+
+    ds_slice = ds[:2]
+    example_ids = [e['example_id'] for e in ds_slice]
+    assert example_ids == ['example_id_1', 'example_id_2']
+
+    def filter_fn(e):
+        return int(e['example_id'].split('_')[-1]) < 2
+
+    ds_filter = ds.shuffle().filter(filter_fn)
+
+    example_ids = [e['example_id'] for e in ds_filter]
+    assert example_ids == ['example_id_1']
+
+    with pytest.raises(RuntimeError):
+        ds_filter = ds.shuffle(reshuffle=True).filter(filter_fn, lazy=False)
