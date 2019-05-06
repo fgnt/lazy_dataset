@@ -134,6 +134,13 @@ class Dataset:
             f'self: \n{repr(self)}'
         )
 
+    @property
+    def indexable(self):
+        raise NotImplementedError(
+            f'indexable is not implemented for {self.__class__}.\n'
+            f'self: \n{repr(self)}'
+        )
+
     def __getitem__(self, item):
         if isinstance(item, (slice, tuple, list)):
             return SliceDataset(item, self)
@@ -292,10 +299,7 @@ class Dataset:
             return FilterDataset(filter_fn, self)
         else:
             # Input dataset needs to be indexable.
-            # Output still has `len`, following line should not raise errors.
-            try:
-                _ = self.keys()
-            except Exception:
+            if not self.indexable:
                 raise RuntimeError(
                     'You can only use lazy=False if the incoming dataset is '
                     'indexable.'
@@ -657,6 +661,10 @@ class DictDataset(Dataset):
     def copy(self, freeze=False):
         return self.__class__(self.examples, name=self.name)
 
+    @property
+    def indexable(self):
+        return True
+
     def __str__(self):
         if self.name is None:
             return f'{self.__class__.__name__}(len={len(self)})'
@@ -706,6 +714,10 @@ class ListDataset(Dataset):
 
     def copy(self, freeze=False):
         return self.__class__(self.examples, name=self.name)
+
+    @property
+    def indexable(self):
+        return True
 
     def __str__(self):
         if self.name is None:
@@ -757,6 +769,10 @@ class MapDataset(Dataset):
             input_dataset=self.input_dataset.copy(freeze=freeze)
         )
 
+    @property
+    def indexable(self):
+        return self.input_dataset.indexable
+    
     def __str__(self):
         map_function_str = str(self.map_function)
         if 'built-in function' in map_function_str:
@@ -862,6 +878,10 @@ class CatchExceptionDataset(Dataset):
             warn=self.warn,
         )
 
+    @property
+    def indexable(self):
+        return False
+
     def __getitem__(self, item):
         if isinstance(item, (str)):
             return self.input_dataset[item]
@@ -922,6 +942,10 @@ class PrefetchDataset(Dataset):
             backend=self.backend,
             catch_filter_exception=self.catch_filter_exception,
         )
+
+    @property
+    def indexable(self):
+        return False
 
     def __iter__(self):
         # Convert ReShuffleDataset to ShuffleDataset
@@ -1063,6 +1087,10 @@ class ReShuffleDataset(Dataset):
                 input_dataset=self.input_dataset.copy(freeze=freeze),
             )
 
+    @property
+    def indexable(self):
+        return False
+
     def __len__(self):
         return len(self.input_dataset)
 
@@ -1109,6 +1137,10 @@ class LocalShuffleDataset(Dataset):
             buffer_size=self.buffer_size,
         )
 
+    @property
+    def indexable(self):
+        return False
+
     def __len__(self):
         return len(self.input_dataset)
 
@@ -1130,18 +1162,20 @@ class LocalShuffleDataset(Dataset):
     def __getitem__(self, item):
         if isinstance(item, str):
             return self.input_dataset[item]
-        elif isinstance(item, (numbers.Integral, slice, tuple, list)):
+        elif isinstance(item, numbers.Integral):
             raise TypeError(
                 f'{self.__class__.__name__} does not support '
-                f'integers and slices as argument of __getitem__.'
+                f'integers as argument of __getitem__.'
                 f'Got argument "{item}" of type {type(item)}.'
             )
         else:
+            # Let super().__getitem__(...) raise the Exception when item is a
+            # slice, tuple or list.
             return super().__getitem__(item)
 
 
 class SliceDataset(Dataset):
-    def __init__(self, slice, input_dataset):
+    def __init__(self, slice, input_dataset: Dataset):
         """
         Should not be used directly. Simply call the dataset with brackets:
         dataset[0:10:2]
@@ -1154,6 +1188,18 @@ class SliceDataset(Dataset):
             slice: Can be a slice, e.g. `slice(0, None, 2)`.
             input_dataset:
         """
+        if not input_dataset.indexable:
+            raise RuntimeError(
+                f'You tried `dataset[{slice}]`\n'
+                'You can only use `__getitem__` on datasets that are '
+                'indexable.\n'
+                'Example datasets that do not support indexing are:\n'
+                f'  {FilterDataset.__name__}, {ReShuffleDataset.__name__} and '
+                f'{PrefetchDataset.__name__}\n'
+                'The following dataset is not indexable:\n'
+                f'{input_dataset!r}'
+            )
+
         self._slice = slice
         if np.ndim(self._slice) == 2:
             assert len(self._slice) == 1, self._slice
@@ -1178,6 +1224,11 @@ class SliceDataset(Dataset):
             input_dataset=self.input_dataset.copy(freeze=freeze),
             slice=self._slice,
         )
+
+    @property
+    def indexable(self):
+        assert self.input_dataset.indexable, (self.input_dataset.indexable, self.input_dataset)
+        return True
 
     _keys = None
 
@@ -1246,6 +1297,10 @@ class FilterDataset(Dataset):
             filter_function=self.filter_function,
         )
 
+    @property
+    def indexable(self):
+        return False
+
     def __str__(self):
         return f'{self.__class__.__name__}({self.filter_function})'
 
@@ -1289,6 +1344,10 @@ class ConcatenateDataset(Dataset):
         return self.__class__(
             *[ds.copy(freeze=freeze) for ds in self.input_datasets]
         )
+
+    @property
+    def indexable(self):
+        return all([ds.indexable for ds in self.input_datasets])
 
     def __iter__(self):
         for input_dataset in self.input_datasets:
@@ -1419,6 +1478,10 @@ class ZipDataset(Dataset):
             *[ds.copy(freeze=freeze) for ds in self.input_datasets]
         )
 
+    @property
+    def indexable(self):
+        return all([ds.indexable for ds in self.input_datasets])
+
     def __iter__(self):
         for key in self.keys():
             yield tuple([
@@ -1501,6 +1564,10 @@ class BatchDataset(Dataset):
             drop_last=self.drop_last,
         )
 
+    @property
+    def indexable(self):
+        return self.input_dataset.input_dataset
+
     def __str__(self):
         return f'{self.__class__.__name__}(batch_size={self.batch_size})'
 
@@ -1554,6 +1621,10 @@ class UnbatchDataset(Dataset):
             input_dataset=self.input_dataset.copy(freeze=freeze)
         )
 
+    @property
+    def indexable(self):
+        return False
+
     def __iter__(self):
         for batch in self.input_dataset:
             assert isinstance(batch, (list, tuple, collections.Generator))
@@ -1602,6 +1673,10 @@ class DynamicBucketDataset(Dataset):
             min_rate=self.min_rate,
             drop_last=self.drop_last,
         )
+
+    @property
+    def indexable(self):
+        return False
 
     def __iter__(self):
         buckets = list()
