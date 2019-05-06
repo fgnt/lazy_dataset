@@ -414,17 +414,35 @@ class Dataset:
            .map(fragment_fn).unbatch()). In this case a local shuffle
            (i.e. buffer_size > 0) is reasonable.
 
+        >>> np.random.seed(1)
+        >>> examples = {'a': {}, 'b': {}, 'c': {}}
+        >>> it = DictDataset(examples)
+        >>> it = it.items().map(lambda x: {'example_id': x[0], **x[1]})
+        >>> it = it.shuffle(False)
+        >>> it  # doctest: +ELLIPSIS
+              DictDataset(len=3)
+              DictDataset(len=3)
+            ZipDataset()
+          MapDataset(<function <lambda> at ...>)
+        SliceDataset([0 2 1])
+        >>> list(it)
+        [{'example_id': 'a'}, {'example_id': 'c'}, {'example_id': 'b'}]
+        >>> it.keys()
+        ('a', 'c', 'b')
         """
         # Should reshuffle default be True or False
         if buffer_size is not None:
             assert reshuffle is True, 'LocalShuffleDataset only supports reshuffle'
             assert rng is None, 'LocalShuffleDataset does not support seeds.'
             return LocalShuffleDataset(self, buffer_size=buffer_size)
+
+        rng = np.random if rng is None else rng
         if reshuffle is True:
-            assert rng is None, 'ReShuffleDataset does not support seeds.'
-            return ReShuffleDataset(self)
+            return ReShuffleDataset(self, rng=rng)
         elif reshuffle is False:
-            return ShuffleDataset(self, rng=rng)
+            permutation = np.arange(len(self))
+            rng.shuffle(permutation)
+            return self[permutation]
         else:
             raise ValueError(reshuffle, self)
 
@@ -1001,70 +1019,6 @@ class PrefetchDataset(Dataset):
         )
 
 
-class ShuffleDataset(Dataset):
-    """
-    Dataset that shuffles the input_dataset. Assumes, that the input_dataset
-    has a length.
-    Note:
-        This Dataset supports indexing, but does not reshuffle each iteration.
-
-    >>> np.random.seed(1)
-    >>> examples = {'a': {}, 'b': {}, 'c': {}}
-    >>> it = DictDataset(examples)
-    >>> it = it.items().map(lambda x: {'example_id': x[0], **x[1]})
-    >>> it = it.shuffle(False)
-    >>> it  # doctest: +ELLIPSIS
-          DictDataset(len=3)
-          DictDataset(len=3)
-        ZipDataset()
-      MapDataset(<function <lambda> at ...>)
-    ShuffleDataset()
-    >>> list(it)
-    [{'example_id': 'a'}, {'example_id': 'c'}, {'example_id': 'b'}]
-    >>> it.keys()
-    ('a', 'c', 'b')
-    """
-
-    def __init__(self, input_dataset, rng=None):
-        self.permutation = np.arange(len(input_dataset))
-        self.rng=rng
-        rng = np.random if rng is None else rng
-        rng.shuffle(self.permutation)
-        self.input_dataset = input_dataset
-
-    def copy(self, freeze=False):
-        new = self.__class__(
-            input_dataset=self.input_dataset.copy(freeze=freeze),
-            rng=self.rng,
-        )
-        new.permutation = self.permutation
-
-        return new
-
-    def __len__(self):
-        return len(self.input_dataset)
-
-    _keys = None
-
-    def keys(self):
-        if self._keys is None:
-            keys = self.input_dataset.keys()
-            self._keys = tuple([keys[p] for p in self.permutation])
-        return self._keys
-
-    def __iter__(self):
-        for idx in self.permutation:
-            yield self.input_dataset[idx]
-
-    def __getitem__(self, item):
-        if isinstance(item, str):
-            return self.input_dataset[item]
-        elif isinstance(item, numbers.Integral):
-            return self.input_dataset[self.permutation[item]]
-        else:
-            return super().__getitem__(item)
-
-
 class ReShuffleDataset(Dataset):
     """
     Dataset that shuffles the input_dataset. Assumes, that the input_dataset
@@ -1073,15 +1027,15 @@ class ReShuffleDataset(Dataset):
         This Dataset reshuffle each iteration, but does not support indexing.
     """
 
-    def __init__(self, input_dataset, rng=None):
+    def __init__(self, input_dataset, rng=np.random):
         self.permutation = np.arange(len(input_dataset))
         self.input_dataset = input_dataset
+        self.rng = rng
 
     def copy(self, freeze=False):
         if freeze:
-            return ShuffleDataset(
-                input_dataset=self.input_dataset.copy(freeze=freeze),
-            )
+            self.rng.shuffle(self.permutation)
+            return self.input_dataset.copy(freeze=freeze)[self.permutation]
         else:
             return self.__class__(
                 input_dataset=self.input_dataset.copy(freeze=freeze),
