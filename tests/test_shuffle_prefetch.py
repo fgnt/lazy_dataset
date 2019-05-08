@@ -36,14 +36,24 @@ def test_shuffle_prefetch():
     example_ids = [ex['example_id'] for ex in ds]
     assert example_ids == 'c b e a d'.split()
 
-    np.random.seed(0)
-
+    rng = np.random.RandomState(1)
     # With reshuffle prefetch still works and the ordering is each time
     # different
     ds = get_dataset()
-    ds = ds.shuffle(reshuffle=True)
+    ds = ds.shuffle(rng=rng, reshuffle=True)
     ds = ds.prefetch(2, 4)
     example_ids = [ex['example_id'] for ex in ds]
-    assert example_ids == 'c a b d e'.split()
+    assert example_ids == 'c b e a d'.split()
     example_ids = [ex['example_id'] for ex in ds]
-    assert example_ids == 'a c b e d'.split()
+    assert example_ids == 'c e d a b'.split()
+
+
+def test_reshuffle_slice():
+    rng = np.random.RandomState(1)
+
+    ds = get_dataset()
+    ds = ds.shuffle(rng=rng, reshuffle=True)
+    ds = ds.map(lambda x: x)
+
+    with pytest.raises(RuntimeError):
+        ds = ds[:3]
