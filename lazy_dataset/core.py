@@ -660,7 +660,7 @@ class Dataset:
             batch_size=batch_size,
             key=key,
             max_padding_rate=max_padding_rate,
-            max_total_size=max_total_size,
+            total_size_threshold=max_total_size,
             expiration=expiration,
             drop_incomplete=drop_incomplete,
             sort_by_key=sort_by_key
@@ -1702,7 +1702,7 @@ class DynamicBucketDataset(Dataset):
     """
     def __init__(
             self, input_dataset, batch_size, key, max_padding_rate,
-            max_total_size=None, expiration=None, drop_incomplete=False,
+            total_size_threshold=None, expiration=None, drop_incomplete=False,
             sort_by_key=False
     ):
         """dynamically spawn and gather examples into buckets.
@@ -1717,7 +1717,7 @@ class DynamicBucketDataset(Dataset):
             max_padding_rate: the maximum padding that has to be added to a
                 signal in a bucket. E.g. if set to 0.2, a example of length 100
                 can only be in a bucket with examples with lengths from 80 to 125.
-            max_total_size: total size of a bucket (len(bucket)*max_length_in_bucket)
+            total_size_threshold: total size of a bucket (len(bucket)*max_length_in_bucket)
                 after which a bucket is emitted though len(bucket) < batch_size
             expiration: maximum life time of a bucket. After this number of
                 steps it is either emitted (if drop_incomplete is False)
@@ -1736,7 +1736,7 @@ class DynamicBucketDataset(Dataset):
         else:
             raise ValueError(key)
         self.max_padding_rate = max_padding_rate
-        self.max_total_size = max_total_size
+        self.max_total_size = total_size_threshold
         self.expiration = expiration
         self.drop_incomplete = drop_incomplete
         self.sort_by_key = sort_by_key
