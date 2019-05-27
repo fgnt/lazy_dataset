@@ -1779,8 +1779,9 @@ class DynamicBucketDataset(Dataset):
                     ):
                         if self.sort_by_key:
                             bucket = sorted(bucket, key=self.key, reverse=True)
-                        batch_count += 1
                         yield bucket
+                        batch_count += 1
+                        buckets.pop(j)
                     else:
                         lower_bound = max(
                             lower_bound, value * (1 - self.max_padding_rate)
@@ -1794,9 +1795,7 @@ class DynamicBucketDataset(Dataset):
                         )
                     found_bucket = True
                     break
-            if found_bucket:
-                buckets.pop(j)
-            else:
+            if not found_bucket:
                 buckets.append((
                     [example],
                     batch_count,
