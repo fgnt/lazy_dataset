@@ -4,16 +4,18 @@ import numpy as np
 
 def test_bucket_idx():
     examples = list(range(10))
+    examples = {str(j): i for j, i in enumerate(examples)}
     ds = lazy_dataset.new(examples)
-    idx = ds.get_bucket_indices(lambda x: x, 5)
-    assert (idx == np.repeat(list(range(5)), 2)).all()
+    idx = list(ds.get_bucket_indices(lambda x: x, 5).values())
+    assert (np.array(idx) == np.repeat(list(range(5)), 2)).all()
 
 
 def test_bucket():
     examples = [1, 10, 5, 7, 8, 2, 4, 3, 20, 1, 6, 9]
+    examples = {str(j): i for j, i in enumerate(examples)}
     ds = lazy_dataset.new(examples)
 
-    idx = ds.get_bucket_indices(key=lambda x: x, num_buckets=3)
+    idx = ds.get_bucket_indices(lambda x: x, 3)
     buckets = [list(bucket) for bucket in ds.bucket(idx)]
     assert buckets == [
         [1, 2, 3, 1],
