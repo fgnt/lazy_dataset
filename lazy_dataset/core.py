@@ -1698,9 +1698,9 @@ class DynamicBucketDataset(Dataset):
     >>> [batch for batch in batch_dataset]
     [[10, 8], [5, 4], [1], [7], [2]]
     >>> batch_dataset = DynamicBucketDataset(\
-    examples, 2, key=lambda x: x, max_padding_rate=0.2, expiration=1)
+    examples, 2, key=lambda x: x, max_padding_rate=0.2, expiration=2)
     >>> [batch for batch in batch_dataset]
-    [[10, 8], [1], [5], [7], [2], [4]]
+    [[10, 8], [1], [5, 4], [7], [2]]
     """
     def __init__(
             self, input_dataset, batch_size, key, max_padding_rate,
@@ -1760,8 +1760,7 @@ class DynamicBucketDataset(Dataset):
 
     def __iter__(self):
         buckets = list()
-        batch_count = 0
-        for example in self.input_dataset:
+        for i, example in enumerate(self.input_dataset):
             value = self.key(example)
             found_bucket = False
             for j, (
@@ -1780,7 +1779,6 @@ class DynamicBucketDataset(Dataset):
                         if self.sort_by_key:
                             bucket = sorted(bucket, key=self.key, reverse=True)
                         yield bucket
-                        batch_count += 1
                         buckets.pop(j)
                     else:
                         lower_bound = max(
@@ -1798,7 +1796,7 @@ class DynamicBucketDataset(Dataset):
             if not found_bucket:
                 buckets.append((
                     [example],
-                    batch_count,
+                    i,
                     value * (1 - self.max_padding_rate),
                     value / (1 - self.max_padding_rate),
                     value
@@ -1807,12 +1805,15 @@ class DynamicBucketDataset(Dataset):
             if self.expiration is not None:
                 expired = set()
                 for j, (bucket, creation_idx, *_) in enumerate(buckets):
-                    if (batch_count - creation_idx) >= self.expiration:
+                    if (i - creation_idx) / self.batch_size >= self.expiration:
+                        # do not count batches to not get into a blocking state
+                        # if no batch gets ever completed. However also do not
+                        # operate with example counts to prevent the expiration
+                        # parameter being batch_size dependent
                         expired.add(j)
                         if not self.drop_incomplete:
                             if self.sort_by_key:
                                 bucket = sorted(bucket, key=self.key, reverse=True)
-                            batch_count += 1
                             yield bucket
                         else:
                             # ToDo: maybe add warning
@@ -1821,7 +1822,7 @@ class DynamicBucketDataset(Dataset):
                     buckets.pop(idx)
         if not self.drop_incomplete:
             buckets = sorted(buckets, key=lambda x: len(x[0]), reverse=True)
-            for bucket, _, _, _, _ in buckets:
+            for bucket, *_ in buckets:
                 if self.sort_by_key:
                     bucket = sorted(bucket, key=self.key, reverse=True)
                 yield bucket
