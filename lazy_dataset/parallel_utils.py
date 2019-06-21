@@ -45,8 +45,8 @@ def lazy_parallel_map(
         function,
         generator,
         *,
-        args=[],
-        kwargs={},
+        args=None,
+        kwargs=None,
         backend="t",
         buffer_size=5,
         max_workers=2
@@ -74,6 +74,11 @@ def lazy_parallel_map(
        serial execution.
 
     """
+    if kwargs is None:
+        kwargs = {}
+    if args is None:
+        args = []
+
     if max_workers > 1 or backend is False:
         ensure_single_thread_numeric()
 
