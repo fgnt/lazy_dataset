@@ -1108,14 +1108,9 @@ class LocalShuffleDataset(Dataset):
 
     def __iter__(self):
         buffer = list()
-        print(f'Filling Shuffle Buffer with {self.buffer_size} samples.')
-        buffer_filled = False
         for element in self.input_dataset:
             buffer.append(element)
             if len(buffer) >= self.buffer_size:
-                if not buffer_filled:
-                    print('Shuffle Buffer filled.')
-                    buffer_filled = True
                 yield buffer.pop(int(np.random.choice(self.buffer_size)))
         random.shuffle(buffer)
         for element in buffer:

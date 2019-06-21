@@ -143,9 +143,7 @@ def lazy_parallel_map(
         # First fill the buffer
         # If buffer full, take one element and push one new inside
         for ele in generator:
-            # print(q.qsize(), 'q.qsize()', buffer_size)
             if q.qsize() >= buffer_size:
-                # print('y1')
                 yield result(q.get())
             q.put(submit(executor, function, ele, *args, **kwargs))
         while not q.empty():
