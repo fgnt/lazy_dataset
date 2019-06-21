@@ -968,20 +968,23 @@ class PrefetchDataset(Dataset):
     def indexable(self):
         return False
 
+    def __len__(self):
+        if self.catch_filter_exception:
+            raise TypeError(
+                f'__len__ is not implemented for {self.__class__} ' +
+                f'if `catch_filter_exception` is set.\n' +
+                f'self: \n{repr(self)}'
+            )
+        else:
+            return len(self.input_dataset)
+
     def __iter__(self):
         # Convert ReShuffleDataset to ShuffleDataset
         input_dataset = self.input_dataset.copy(freeze=True)
 
         from lazy_dataset.parallel_utils import lazy_parallel_map
 
-        if (
-                self.catch_filter_exception is False
-                or self.catch_filter_exception is None
-                or (
-                    isinstance(self.catch_filter_exception, (tuple, list))
-                    and len(self.catch_filter_exception) == 0
-                )
-        ):
+        if not self.catch_filter_exception:
             yield from lazy_parallel_map(
                 input_dataset.__getitem__,
                 range(len(self.input_dataset)),
