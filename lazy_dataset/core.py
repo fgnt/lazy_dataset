@@ -226,7 +226,8 @@ class Dataset:
             )
         return MapDataset(map_fn, self)
 
-    def prefetch(self, num_workers, buffer_size, backend='t', catch_filter_exception=None):
+    def prefetch(self, num_workers, buffer_size, backend='t',
+                 catch_filter_exception=None):
         """
 
         Args:
@@ -435,7 +436,8 @@ class Dataset:
         """
         # Should reshuffle default be True or False
         if buffer_size is not None:
-            assert reshuffle is True, 'LocalShuffleDataset only supports reshuffle'
+            assert reshuffle is True, ('LocalShuffleDataset only supports '
+                                       'reshuffle')
             assert rng is None, 'LocalShuffleDataset does not support seeds.'
             return LocalShuffleDataset(self, buffer_size=buffer_size)
 
@@ -614,7 +616,7 @@ class Dataset:
             self,
             size=None,
             replace=False,
-            rng_state: np.random.RandomState=np.random,
+            rng_state: np.random.RandomState = np.random,
     ):
         """
         >>> rng_state = np.random.RandomState(0)
@@ -793,7 +795,7 @@ class MapDataset(Dataset):
     @property
     def indexable(self):
         return self.input_dataset.indexable
-    
+
     def __str__(self):
         map_function_str = str(self.map_function)
         if 'built-in function' in map_function_str:
@@ -824,6 +826,7 @@ class ParMapDataset(MapDataset):
     """
     Should this dataset support getitem? Getitem disables the buffer.
     """
+
     def __init__(
             self, map_function, input_dataset, num_workers, buffer_size,
             backend='t'
@@ -844,7 +847,6 @@ class ParMapDataset(MapDataset):
         )
 
     def __iter__(self):
-
         from lazy_dataset.parallel_utils import lazy_parallel_map
 
         return lazy_parallel_map(
@@ -882,6 +884,7 @@ class CatchExceptionDataset(Dataset):
       MapDataset(<function foo at ...>)
     CatchExceptionDataset()
     """
+
     def __init__(
             self,
             input_dataset,
@@ -1184,7 +1187,8 @@ class SliceDataset(Dataset):
 
     @property
     def indexable(self):
-        assert self.input_dataset.indexable, (self.input_dataset.indexable, self.input_dataset)
+        assert self.input_dataset.indexable, (
+            self.input_dataset.indexable, self.input_dataset)
         return True
 
     _keys = None
@@ -1409,13 +1413,12 @@ class ZipDataset(Dataset):
 
         """
         self.input_datasets = input_datasets
-        assert len(self.input_datasets) >= 1, \
-            'You have to provide at least one dataset.' \
-            f'\n{self.input_datasets}'
-        assert len(self.input_datasets) >= 2, \
-            'Currently limited to at least two dataset. Could be removed.' \
-            f'\n{self.input_datasets}'
-        lengths = [len(it) for it in self.input_datasets]
+        assert len(self.input_datasets) >= 1, (f'You have to provide at least '
+                                               f'one dataset.'
+                                               f'\n{self.input_datasets}')
+        assert len(self.input_datasets) >= 2, (f'Currently limited to at least '
+                                               f'two dataset. Could be removed.'
+                                               f'\n{self.input_datasets}')
         keys = set(self.input_datasets[0].keys())
         lengths = [
             len(keys - set(it.keys())) for it in self.input_datasets
@@ -1425,9 +1428,9 @@ class ZipDataset(Dataset):
                 keys - set(it.keys()) for it in self.input_datasets
             ]
             raise AssertionError(
-                f'Expect that all input_datasets have at least the same keys as ' \
-                f'the first. To much keys: {missing_keys}' \
-                f'\n{self.input_datasets}'
+                f'Expect that all input_datasets have at least the same keys '
+                f'as the first. To many keys: '
+                f'{missing_keys}\n{self.input_datasets}'
             )
 
     def copy(self, freeze=False):
@@ -1509,6 +1512,7 @@ class BatchDataset(Dataset):
     BatchDataset(batch_size=3)
 
     """
+
     def __init__(self, input_dataset, batch_size, drop_last=False):
         self.input_dataset = input_dataset
         self.batch_size = batch_size
@@ -1570,6 +1574,7 @@ class UnbatchDataset(Dataset):
     """
     Divides a batch of examples into single examples.
     """
+
     def __init__(self, input_dataset):
         self.input_dataset = input_dataset
 
@@ -1605,6 +1610,7 @@ class DynamicBucketDataset(Dataset):
     >>> [batch for batch in batch_dataset]
     [[10, 8], [5, 4], [1], [7], [2]]
     """
+
     def __init__(
             self, input_dataset, batch_size, key, min_rate=0.5, max_value=1e6,
             drop_last=False
@@ -1647,13 +1653,14 @@ class DynamicBucketDataset(Dataset):
                         buckets.pop(i)
                         yield bucket
                     else:
-                        min_value = max(min_value, value*self.min_rate)
-                        max_value = min(max_value, value/self.min_rate)
+                        min_value = max(min_value, value * self.min_rate)
+                        max_value = min(max_value, value / self.min_rate)
                         buckets[i] = (bucket, min_value, max_value)
                     found_bucket = True
                     break
             if not found_bucket:
-                buckets.append(([sample], value*self.min_rate, value/self.min_rate))
+                buckets.append(
+                    ([sample], value * self.min_rate, value / self.min_rate))
         if not self.drop_last:
             buckets = sorted(buckets, key=lambda x: len(x[0]), reverse=True)
             for bucket, _, _ in buckets:
