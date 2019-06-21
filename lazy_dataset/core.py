@@ -325,8 +325,8 @@ class Dataset:
                 and the element that raised the exception while processing is 
                 dropped. This can also be set to a specific type (or a list of
                 types) of exceptions to catch. If this is set to a value that
-                evaluates to `False`, the resulting iterator does not define
-                `__len__`.
+                evaluates to `True`, the resulting iterator does not have a
+                length.
 
         Returns:
             Dataset that prefetches data in the background. This dataset is
@@ -373,11 +373,11 @@ class Dataset:
             catch_filter_exception=catch_filter_exception,
         )
 
-    def filter(self, filter_fn: callable, lazy: bool = True) -> 'SliceDataset':
+    def filter(self, filter_fn: callable, lazy: bool = True) -> 'Dataset':
         """
         Filters elements in this dataset based on `filter_fn`. `filter_fn`
         must be a function that consumes (exactly) one example and returns
-        a bool value. If the returned values is `True`, the example is kept,
+        a bool value. If the returned value is `True`, the example is kept,
         otherwise it is dropped.
 
         If using `lazy=False` this method executes all applied functions, so it
@@ -642,7 +642,7 @@ class Dataset:
             groups[k] += indices
         return {k: self[v] for k, v in groups.items()}
 
-    def split(self, sections: int) -> List['SliceDataset']:
+    def split(self, sections: int) -> List['Dataset']:
         """
         Splits the dataset into `sections` number of sections that have
         approximately equal length. The order of elements is not modified.
@@ -677,7 +677,7 @@ class Dataset:
 
     def sort(self, key_fn: Optional[callable] = None,
              sort_fn: callable = sorted,
-             reverse: bool = False) -> 'SliceDataset':
+             reverse: bool = False) -> 'Dataset':
         """
         Sorts the dataset. The sort key is extracted from each example with
         the `key_fn`. The `sort_fn` allows to influence the sorting,
@@ -733,7 +733,7 @@ class Dataset:
             ]
         return self[sort_order]
 
-    def shard(self, num_shards, shard_index) -> 'SliceDataset':
+    def shard(self, num_shards, shard_index) -> 'Dataset':
         """
         Splits an dataset into `num_shards` shards and
         selects shard `shard_index`. Can be used to split the dataset
