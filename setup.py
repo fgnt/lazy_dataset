@@ -15,7 +15,7 @@ from setuptools import find_packages, setup, Command
 
 # Package meta-data.
 NAME = 'lazy_dataset'
-DESCRIPTION = 'My short description for my project.'
+DESCRIPTION = 'Process large datasets as if it was an iterable.'
 URL = 'https://github.com/fgnt/lazy_dataset'
 EMAIL = 'boeddeker@nt.upb.de'
 AUTHOR = 'Christoph Boeddeker'
