@@ -578,7 +578,7 @@ class Dataset:
         return BatchDataset(self, batch_size, drop_last)
 
     def batch_bucket_dynamic(
-            self, batch_size, key, max_padding_rate, max_total_size=None,
+            self, batch_size, key, max_padding_rate, total_size_threshold=None,
             expiration=None, drop_incomplete=False, sort_by_key=False):
         """batch dynamically spawned and filled buckets
 
@@ -586,7 +586,7 @@ class Dataset:
             batch_size:
             key:
             max_padding_rate:
-            max_total_size:
+            total_size_threshold:
             expiration:
             drop_incomplete:
             sort_by_key:
@@ -599,7 +599,7 @@ class Dataset:
             batch_size=batch_size,
             key=key,
             max_padding_rate=max_padding_rate,
-            total_size_threshold=max_total_size,
+            total_size_threshold=total_size_threshold,
             expiration=expiration,
             drop_incomplete=drop_incomplete,
             sort_by_key=sort_by_key
@@ -1677,7 +1677,7 @@ class DynamicBucketDataset(Dataset):
         else:
             raise ValueError(key)
         self.max_padding_rate = max_padding_rate
-        self.max_total_size = total_size_threshold
+        self.total_size_threshold = total_size_threshold
         self.expiration = expiration
         self.drop_incomplete = drop_incomplete
         self.sort_by_key = sort_by_key
@@ -1688,7 +1688,7 @@ class DynamicBucketDataset(Dataset):
             batch_size=self.batch_size,
             key=self.key,
             max_padding_rate=self.max_padding_rate,
-            drop_last=self.drop_incomplete,
+            drop_incomplete=self.drop_incomplete,
         )
 
     @property
@@ -1709,8 +1709,8 @@ class DynamicBucketDataset(Dataset):
                     if (
                         len(bucket) >= self.batch_size
                         or (
-                            self.max_total_size is not None
-                            and (len(bucket) * max_value) > self.max_total_size
+                            self.total_size_threshold is not None
+                            and (len(bucket) * max_value) > self.total_size_threshold
                         )
                     ):
                         if self.sort_by_key:
