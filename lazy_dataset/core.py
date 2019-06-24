@@ -9,33 +9,53 @@ import random
 import collections
 
 import numpy as np
+from typing import Optional, Union, Any, List, Dict
 
 LOG = logging.getLogger('lazy_dataset')
 
 
-def new(examples, immutable_warranty='pickle'):
+def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
     """
+    Creates a new dataset from data in `examples`. `examples` can be a `list`
+    or a `dict`.
 
-    >>> import lazy_dataset
-    >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3})
-    >>> ds
-      DictDataset(len=3)
-    MapDataset(_pickle.loads)
-    >>> ds.keys()
-    ('a', 'b', 'c')
-    >>> list(ds)
-    [1, 2, 3]
-    >>> ds = ds.map(lambda example: example * 2)
-    >>> list(ds)
-    [2, 4, 6]
-    >>> ds = ds.filter(lambda example: example > 2)
-    >>> list(ds)
-    [4, 6]
-    >>> ds
+    Args:
+        examples: The data to create a new dataset from
+        immutable_warranty: How to ensure immutability. Available options are
+            'pickle' and 'copy'.
+
+    Returns:
+        The `Dataset` created from `examples`
+
+    Examples:
+        Create a dataset from a dict:
+
+        >>> import lazy_dataset
+        >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3})
+        >>> ds
           DictDataset(len=3)
         MapDataset(_pickle.loads)
-      MapDataset(<function <lambda> at ...>)
-    FilterDataset(<function <lambda> at ...>)
+        >>> ds.keys()
+        ('a', 'b', 'c')
+        >>> list(ds)
+        [1, 2, 3]
+        >>> ds = ds.map(lambda example: example * 2)
+        >>> list(ds)
+        [2, 4, 6]
+        >>> ds = ds.filter(lambda example: example > 2)
+        >>> list(ds)
+        [4, 6]
+        >>> ds
+              DictDataset(len=3)
+            MapDataset(_pickle.loads)
+          MapDataset(<function <lambda> at ...>)
+        FilterDataset(<function <lambda> at ...>)
+
+        Create a dataset from a list:
+
+        >>> ds = lazy_dataset.new([1, 2, 3, 4, 5])
+        >>> list(ds)
+        [1, 2, 3, 4, 5]
 
     """
     if isinstance(examples, dict):
@@ -47,7 +67,7 @@ def new(examples, immutable_warranty='pickle'):
     return ds
 
 
-def from_dict(examples, immutable_warranty='pickle'):
+def from_dict(examples: dict, immutable_warranty: str = 'pickle'):
     if immutable_warranty == 'pickle':
         examples = {
             k: pickle.dumps(v)
@@ -64,7 +84,7 @@ def from_dict(examples, immutable_warranty='pickle'):
     return ds
 
 
-def from_list(examples, immutable_warranty='pickle'):
+def from_list(examples: list, immutable_warranty: str = 'pickle'):
     assert isinstance(examples, (tuple, list)), examples
     if immutable_warranty == 'pickle':
         examples = [
@@ -83,14 +103,34 @@ def from_list(examples, immutable_warranty='pickle'):
 
 
 def concatenate(*datasets):
-    """Create a new Dataset by concatenation of all passed datasets.
+    """
+    Create a new `Dataset` by concatenation of all passed datasets.
 
-    concatenate(ds1, ds2, ...)
-    concatenate((ds1, ds2, ...))
+    Example:
+        >>> import lazy_dataset
+        >>> ds1 = lazy_dataset.new([1, 2, 3, 4])
+        >>> ds2 = lazy_dataset.new([5, 6, 7, 8])
+        >>> concatenate(ds1, ds2)
+            ListDataset(len=4)
+          MapDataset(_pickle.loads)
+            ListDataset(len=4)
+          MapDataset(_pickle.loads)
+        ConcatenateDataset()
+
+        >>> concatenate((ds1, ds2))
+            ListDataset(len=4)
+          MapDataset(_pickle.loads)
+            ListDataset(len=4)
+          MapDataset(_pickle.loads)
+        ConcatenateDataset()
 
     Args:
-        datasets: List of datasets. Must be
-    Returns: Concatenation of all input datasets.
+        datasets: List of datasets. Can be either a list of datasets
+            (`concatenate((ds1, ds2, ...))`) or multiple datasets
+            (`concatenate(ds1, ds2, ...)`)
+
+    Returns:
+        Concatenation of all input datasets
 
     """
     if len(datasets) == 0:
@@ -98,7 +138,10 @@ def concatenate(*datasets):
     if len(datasets) == 1 and isinstance(datasets[0], (tuple, list)):
         datasets, = datasets
     if not all(isinstance(dataset, Dataset) for dataset in datasets):
-        raise TypeError('All input arguments must be datasets!')
+        raise TypeError(
+            f'All input arguments must be datasets! {Dataset} ' + ' '.join(
+                str(type(d)) for d in datasets) + '|' + ' '.join(
+                str(isinstance(d, Dataset)) for d in datasets))
     if len(datasets) == 1:
         return datasets[0]
     return ConcatenateDataset(*datasets)
@@ -116,7 +159,17 @@ class FilterException(Exception):
 
 class Dataset:
 
-    def copy(self, freeze=False):
+    def copy(self, freeze: bool = False) -> 'Dataset':
+        """
+        Copies this dataset.
+
+        Args:
+            freeze: If `True`, the resulting dataset will not be random anymore.
+                Only effects `ReShuffleDataset` at the moment.
+
+        Returns:
+            A copy of this dataset
+        """
         raise NotImplementedError
 
     def __iter__(self):
@@ -135,7 +188,7 @@ class Dataset:
         )
 
     @property
-    def indexable(self):
+    def indexable(self) -> bool:
         raise NotImplementedError(
             f'indexable is not implemented for {self.__class__}.\n'
             f'self: \n{repr(self)}'
@@ -160,20 +213,25 @@ class Dataset:
             f'self:\n{self!r}'
         )
 
-    def keys(self):
+    def keys(self) -> list:
         raise NotImplementedError(
             f'keys is not implemented for {self.__class__}.\n'
             f'self: \n{repr(self)}'
         )
 
-    def items(self):
+    def items(self) -> List[tuple]:
         """
-        >>> examples = {'a': {'d': 1}, 'b': {'e': 1}, 'c': {'f': 1}}
-        >>> it = DictDataset(examples)
-        >>> list(it)
-        [{'d': 1}, {'e': 1}, {'f': 1}]
-        >>> list(it.items())
-        [('a', {'d': 1}), ('b', {'e': 1}), ('c', {'f': 1})]
+        Returns:
+             A `list` of key-value pairs (`tuple`s) like `dict.items()`.
+             Only works for datasets that have `keys`.
+
+        Example:
+            >>> examples = {'a': {'d': 1}, 'b': {'e': 1}, 'c': {'f': 1}}
+            >>> it = DictDataset(examples)
+            >>> list(it)
+            [{'d': 1}, {'e': 1}, {'f': 1}]
+            >>> list(it.items())
+            [('a', {'d': 1}), ('b', {'e': 1}), ('c', {'f': 1})]
         """
         it = DictDataset(dict(zip(self.keys(), self.keys())))
         return it.zip(self)
@@ -188,36 +246,56 @@ class Dataset:
 
     def __call__(self):
         """
-        Usecase
-          tf.data.Dataset.from_generator(dataset)
+
+        Usecase:
+          `tf.data.Dataset.from_generator(dataset)`
+
         Without __call__:
-          tf.data.Dataset.from_generator(lambda: dataset)
+          `tf.data.Dataset.from_generator(lambda: dataset)`
         """
         return self.__iter__()
 
-    def map(self, map_fn, num_workers=0, buffer_size=100, backend='t'):
+    def map(self, map_fn: callable, num_workers: int = 0,
+            buffer_size: int = 100, backend: str = 't') -> 'MapDataset':
         """
+        Maps this dataset with `map_fn`. `map_fn` is applied to every element
+        in the dataset and a new dataset is created with the results.
+
+        Inspired by `map`.
 
         Args:
-            map_fn: function to transform an example dict. Takes an example
-                dict as provided by this dataset and returns a transformed
-                example dict, e.g. read and adds the observed audio signals.
-            num_workers:
-            buffer_size:
-            backend:
+            map_fn: Function to transform an example dict. Takes a single
+                example as provided by this dataset as its only positional
+                argument and returns a transformed example, e.g., read and add
+                 the observed audio signals.
+            num_workers: If set to a value > 0, the `map_fn` is executed in
+                parallel using `parallel_utils.lazy_parallel_map` with
+                `num_workers` count of processes/threads.
+            buffer_size: The size of the buffer used when `map_fn` is executed
+                in parallel (`num_workers > 0`).
+            backend: The backend used when `map_fn` is executed in parallel
+                (`num_workers > 0`). See `parallel_utils.lazy_parallel_map` for
+                details.
 
         Returns:
             MapDataset returning mapped examples. This can e.g. be used to read
             and add audio to the example dict (see read_audio method).
 
         Note:
-          - map_fn can do inplace transformations without using copy.
-            The DictDataset makes a deepcopy of each example and prevents a
+          - `map_fn` can do inplace transformations without using copy.
+            The `DictDataset` makes a deepcopy of each example and prevents a
             modification of the root example.
-          - If num_workers > 0 that the map_fn is performed in parallel.
-            But the input dataset is still executed serial.
+          - If `num_workers > 0` the `map_fn` is performed in parallel.
+            But the input dataset is still executed serially.
             This allows an arbitrary input dataset. When it is desired to get
             an example in parallel, use prefetch on an indexable dataset.
+          - `.map(map_fn).prefetch(...)` should be preferred over
+            `.map(map_fn, num_workers=...)` where possible. The prefetch
+            implementation executes all actions that were applied to the dataset
+            before the prefetch operation (`map`, `batch`, ...) in parallel,
+            but `.map(map_fn, num_workers=...)` only executes the passed
+            `map_fn` in parallel and all functions previously applied to the
+            dataset serially in the main thread.
         """
         if num_workers > 0:
             return ParMapDataset(
@@ -226,44 +304,65 @@ class Dataset:
             )
         return MapDataset(map_fn, self)
 
-    def prefetch(self, num_workers, buffer_size, backend='t', catch_filter_exception=None):
+    def prefetch(self, num_workers: int, buffer_size: int, backend: str = 't',
+                 catch_filter_exception: Any = None) -> 'PrefetchDataset':
         """
+        Prefetches data (i.e., executes all actions applied previously with,
+        e.g., `.map`, `.filter`, `.batch` or others) asynchronously in the
+        background using `backend`.
+        The dataset on which the `prefetch` method is used must be indexable
+        (define `__getitem__`) and have a length (define `__len__`).
+        For details on the available options for `backend` see
+        `parallel_utils.lazy_parallel_map`.
+        The threaded backend ('t') is recommended in most scenarios, especially
+        if the mapped functions use a lot of I/O or numpy.
 
         Args:
-            num_workers:
-            buffer_size:
+            num_workers: Number of threads/processes used by the backend
+            buffer_size: Number of elements that are prefetched and buffered
+            backend: The used backend
+            catch_filter_exception: If `True`, `FilterException`s are catched
+                and the element that raised the exception while processing is
+                dropped. This can also be set to a specific type (or a list of
+                types) of exceptions to catch. If this is set to a value that
+                evaluates to `True`, the resulting iterator does not have a
+                length.
 
         Returns:
+            Dataset that prefetches data in the background. This dataset is
+            not indexable and only has a length if the input dataset defines
+            a length and `bool(catch_filter_exception)` evaluates to `False`.
 
-        >>> import string
-        >>> ascii = string.ascii_lowercase
-        >>> it = DictDataset({k: v for v, k in enumerate(ascii[:10])})
-        >>> # ds1 = ds1.items().map(lambda x: {'example_id': x[0], **x[1]})
-        >>> list(it)
-        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-        >>> def foo(ex):
-        ...     print(f'called with {ex}')
-        ...     return ex
-        >>> it = it.map(foo)
-        >>> list(it)
-        called with 0
-        called with 1
-        called with 2
-        called with 3
-        called with 4
-        called with 5
-        called with 6
-        called with 7
-        called with 8
-        called with 9
-        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-        >>> it = it.prefetch(2, 4)
-        >>> next(iter(it))
-        called with 0
-        called with 1
-        called with 2
-        called with 3
-        0
+        Example:
+            >>> import string
+            >>> ascii = string.ascii_lowercase
+            >>> it = DictDataset({k: v for v, k in enumerate(ascii[:10])})
+            >>> # ds1 = ds1.items().map(lambda x: {'example_id': x[0], **x[1]})
+            >>> list(it)
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+            >>> def foo(ex):
+            ...     print(f'called with {ex}')
+            ...     return ex
+            >>> it = it.map(foo)
+            >>> list(it)
+            called with 0
+            called with 1
+            called with 2
+            called with 3
+            called with 4
+            called with 5
+            called with 6
+            called with 7
+            called with 8
+            called with 9
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+            >>> it = it.prefetch(2, 4)
+            >>> next(iter(it))
+            called with 0
+            called with 1
+            called with 2
+            called with 3
+            0
 
         """
         return PrefetchDataset(
@@ -274,24 +373,29 @@ class Dataset:
             catch_filter_exception=catch_filter_exception,
         )
 
-    def filter(self, filter_fn, lazy=True):
+    def filter(self, filter_fn: callable, lazy: bool = True) -> 'Dataset':
         """
-        The filter_fn consumes an example. If the filter_fn returns True, we
-        keep the example. If it is False, we drop the example.
+        Filters elements in this dataset based on `filter_fn`. `filter_fn`
+        must be a function that consumes (exactly) one example and returns
+        a bool value. If the returned value is `True`, the example is kept,
+        otherwise it is dropped.
 
-        Filtering examples. If using lazy=False this method should be called
-        before applying expensive map functions.
+        If using `lazy=False` this method executes all applied functions, so it
+         should be called before applying expensive map functions.
 
         Syntax is inspired by:
         https://docs.python.org/3/library/functions.html#filter
 
         Args:
-            filter_fn: function to filter examples, takes example as input
-                and returns True if example should be kept, else False.
-            lazy: If True, dataset does not support `len(it)` anymore but
-                computation is performed once the dataset visits the item.
+            filter_fn: Function to filter examples. Takes one example as input
+                and returns `True` if example should be kept, and `False`
+                otherwise
+            lazy: If `True`, the computation is performed once the dataset
+                visits the item and the resulting dataset does no longer have a
+                length.
 
-        Returns: FilterDataset iterating over filtered examples.
+        Returns:
+            `FilterDataset` iterating over filtered examples.
 
         """
         if lazy:
@@ -307,31 +411,48 @@ class Dataset:
                 )
             return self[[i for i, e in enumerate(self) if filter_fn(e)]]
 
-    def catch(self, exceptions=FilterException, warn=False):
+    def catch(self, exceptions=FilterException,
+              warn: bool = False) -> 'CatchExceptionDataset':
         """
-        Drop examples that throw an exception (default: FilterException).
+        Drop examples that throw an exception (default: `FilterException`).
         This is an alternative to filter.
 
         Args:
-            exceptions:
-            warn: If True, enable logger warning.
+            exceptions: One exception or a list of exceptions to filter
+            warn: If `True`, enable logger warning when an exception is catched.
 
         Returns:
+            A filtered dataset. The resulting dataset does no longer have a
+            length because the resulting number of elements in the dataset
+            cannot be determined beforehand.
         """
         return CatchExceptionDataset(self, exceptions=exceptions, warn=warn)
 
-    def concatenate(self, *others):
+    def concatenate(self, *others) -> 'ConcatenateDataset':
         """
-        Concatenate this dataset with others. keys need to be unambiguous.
-
-        concatenate(self, ds1, ds2, ...)
-        concatenate(self, (ds1, ds2, ...))
+        Concatenate this dataset with others. The keys of all datasets need to
+        be unambiguous.
 
         Args:
             *others: list of datasets to be concatenated
 
         Returns:
-            Dataset that can iterate over all examples.
+            `ConcatenateDataset` that iterate over all examples of all provided
+            datasets.
+
+        Example:
+            >>> import lazy_dataset
+            >>> ds1 = lazy_dataset.new([1, 2, 3, 4, 5])
+            >>> ds2 = lazy_dataset.new([6, 7, 8, 9, 0])
+            >>> concatenated = ds1.concatenate(ds2)
+            >>> concatenated
+                ListDataset(len=5)
+              MapDataset(_pickle.loads)
+                ListDataset(len=5)
+              MapDataset(_pickle.loads)
+            ConcatenateDataset()
+            >>> list(concatenated)
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
 
         """
         if len(others) == 0:
@@ -340,102 +461,109 @@ class Dataset:
             others, = others
         return ConcatenateDataset(self, *others)
 
-    def zip(self, *others):
+    def zip(self, *others) -> 'ZipDataset':
         """
         Creates a `Dataset` by zipping together the given datasets.
 
         This method has two major differences to the built-in `zip()` function
-        in Python. First the zipping happen based on the keys of the
+        in Python. First, the zipping happen based on the keys of the
         first dataset (i.e. The first defines the order).
-
-        Second it is assumes that all datasets have the same length and keys.
+        Second, it assumes that all datasets have the same length and keys.
         (Could be removed, when someone needs it.)
 
         This function is usually followed by a map call to merge the tuple of
         dicts to a single dict.
 
-        >>> ds1 = DictDataset({'a': {'z': 1}, 'b': {'z': 2}})
-        >>> ds1 = ds1.items().map(lambda x: {'example_id': x[0], **x[1]})
-        >>> ds2 = DictDataset({'a': {'y': 'c'}, 'b': {'y': 'd', 'z': 3}})
-        >>> ds2 = ds2.items().map(lambda x: {'example_id': x[0], **x[1]})
-        >>> ds3 = ds1.zip(ds2)
-        >>> for e in ds3: print(e)
-        ({'example_id': 'a', 'z': 1}, {'example_id': 'a', 'y': 'c'})
-        ({'example_id': 'b', 'z': 2}, {'example_id': 'b', 'y': 'd', 'z': 3})
-
-        # Merge the dicts, when conflict, prefer the second
-        >>> ds4 = ds3.map(lambda example: {**example[0], **example[1]})
-        >>> ds4  # doctest: +ELLIPSIS
-                DictDataset(len=2)
-                DictDataset(len=2)
-              ZipDataset()
-            MapDataset(<function <lambda> at ...>)
-                DictDataset(len=2)
-                DictDataset(len=2)
-              ZipDataset()
-            MapDataset(<function <lambda> at ...>)
-          ZipDataset()
-        MapDataset(<function <lambda> at ...>)
-        >>> for e in ds4: print(e)
-        {'example_id': 'a', 'z': 1, 'y': 'c'}
-        {'example_id': 'b', 'z': 3, 'y': 'd'}
-
-        # Lambda that merges an arbitary amount of dicts.
-        >>> ds5 = ds3.map(lambda example: dict(sum([list(e.items()) for e in example], [])))
-        >>> for e in ds5: print(e)
-        {'example_id': 'a', 'z': 1, 'y': 'c'}
-        {'example_id': 'b', 'z': 3, 'y': 'd'}
-
-
         Args:
             *others: list of other datasets to be zipped
 
-        Returns: ZipDataset
+        Returns:
+            ZipDataset
 
+        Example:
+            >>> ds1 = DictDataset({'a': {'z': 1}, 'b': {'z': 2}})
+            >>> ds1 = ds1.items().map(lambda x: {'example_id': x[0], **x[1]})
+            >>> ds2 = DictDataset({'a': {'y': 'c'}, 'b': {'y': 'd', 'z': 3}})
+            >>> ds2 = ds2.items().map(lambda x: {'example_id': x[0], **x[1]})
+            >>> ds3 = ds1.zip(ds2)
+            >>> for e in ds3: print(e)
+            ({'example_id': 'a', 'z': 1}, {'example_id': 'a', 'y': 'c'})
+            ({'example_id': 'b', 'z': 2}, {'example_id': 'b', 'y': 'd', 'z': 3})
+
+            # Merge the dicts, when conflict, prefer the second
+            >>> ds4 = ds3.map(lambda example: {**example[0], **example[1]})
+            >>> ds4  # doctest: +ELLIPSIS
+                    DictDataset(len=2)
+                    DictDataset(len=2)
+                  ZipDataset()
+                MapDataset(<function <lambda> at ...>)
+                    DictDataset(len=2)
+                    DictDataset(len=2)
+                  ZipDataset()
+                MapDataset(<function <lambda> at ...>)
+              ZipDataset()
+            MapDataset(<function <lambda> at ...>)
+            >>> for e in ds4: print(e)
+            {'example_id': 'a', 'z': 1, 'y': 'c'}
+            {'example_id': 'b', 'z': 3, 'y': 'd'}
+
+            # Lambda that merges an arbitary amount of dicts.
+            >>> ds5 = ds3.map(lambda example: dict(sum([list(e.items()) for e in example], [])))
+            >>> for e in ds5: print(e)
+            {'example_id': 'a', 'z': 1, 'y': 'c'}
+            {'example_id': 'b', 'z': 3, 'y': 'd'}
         """
         return ZipDataset(self, *others)
 
-    def shuffle(self, reshuffle=False, rng=None, buffer_size=None):
+    def shuffle(self, reshuffle: bool = False,
+                rng: Optional[np.random.RandomState] = None,
+                buffer_size: Optional[int] = None) -> 'Dataset':
         """
-        Shuffle this dataset.
+        Shuffle this dataset. This operation is not performed in-place, but
+        returns a shuffled version of the original dataset.
 
         Args:
-            reshuffle:
-                If True, shuffle on each iteration, but disable indexing.
-                If False, single shuffle, but support indexing.
-            rng:
-                instance of np.random.RandomState.
-                When None, fallback to np.random.
-            buffer_size:
+            reshuffle: If `True`, shuffle each time the dataset is iterated,
+                but disable indexing. If `False`, single shuffle, but support
+                indexing.
+            rng: instance of `np.random.RandomState`.
+                When `None`, fallback to np.random.
+            buffer_size: If set, a local shuffle operation is used which only
+                shuffles a window of size `buffer_size`. This is an
+                approximation to the global shuffle.
+                If set, `reshuffle` must be `True` and `rng` must be `None`.
 
         Returns:
+            A `Dataset` with shuffled elements
 
         Note:
-         - Use the buffer_size only in special cases where the dataset is
+         - Use the `buffer_size` only in special cases where the dataset is
            already shuffled. For example a dataset is shuffled and then
            each example is split into multiple examples (using
-           .map(fragment_fn).unbatch()). In this case a local shuffle
-           (i.e. buffer_size > 0) is reasonable.
+           `.map(fragment_fn).unbatch()`). In this case a local shuffle
+           (i.e., buffer_size > 0) is reasonable.
 
-        >>> np.random.seed(1)
-        >>> examples = {'a': {}, 'b': {}, 'c': {}}
-        >>> it = DictDataset(examples)
-        >>> it = it.items().map(lambda x: {'example_id': x[0], **x[1]})
-        >>> it = it.shuffle(False)
-        >>> it  # doctest: +ELLIPSIS
-              DictDataset(len=3)
-              DictDataset(len=3)
-            ZipDataset()
-          MapDataset(<function <lambda> at ...>)
-        SliceDataset([0 2 1])
-        >>> list(it)
-        [{'example_id': 'a'}, {'example_id': 'c'}, {'example_id': 'b'}]
-        >>> it.keys()
-        ('a', 'c', 'b')
+        Example:
+            >>> np.random.seed(1)
+            >>> examples = {'a': {}, 'b': {}, 'c': {}}
+            >>> it = DictDataset(examples)
+            >>> it = it.items().map(lambda x: {'example_id': x[0], **x[1]})
+            >>> it = it.shuffle(False)
+            >>> it  # doctest: +ELLIPSIS
+                  DictDataset(len=3)
+                  DictDataset(len=3)
+                ZipDataset()
+              MapDataset(<function <lambda> at ...>)
+            SliceDataset([0 2 1])
+            >>> list(it)
+            [{'example_id': 'a'}, {'example_id': 'c'}, {'example_id': 'b'}]
+            >>> it.keys()
+            ('a', 'c', 'b')
         """
-        # Should reshuffle default be True or False
+        # TODO: Should reshuffle default be True or False
         if buffer_size is not None:
-            assert reshuffle is True, 'LocalShuffleDataset only supports reshuffle'
+            assert reshuffle is True, ('LocalShuffleDataset only supports '
+                                       'reshuffle')
             assert rng is None, 'LocalShuffleDataset does not support seeds.'
             return LocalShuffleDataset(self, buffer_size=buffer_size)
 
@@ -449,13 +577,16 @@ class Dataset:
         else:
             raise ValueError(reshuffle, self)
 
-    def tile(self, reps, shuffle=False):
+    def tile(self, reps: int, shuffle: bool = False) -> 'Dataset':
         """
         Constructs an new dataset by repeating the dataset the number of
-        times given by reps.
+        times given by `reps`. This is done by copying the dataset and
+        concatenating them.
 
-        The shuffle option if provided, because before concatenating the
-        shuffle is applied.
+        Args:
+            reps: Number of repetitions
+            shuffle: If `True`, calls shuffle with default arguments
+                (*no reshuffle*) on each repetition prior to concatenation.
 
         """
         datasets = [self] * reps
@@ -466,23 +597,43 @@ class Dataset:
             ]
         return self.__class__.concatenate(*datasets)
 
-    def groupby(self, group_fn):
+    def groupby(self, group_fn: callable) -> Dict[Any, 'Dataset']:
         """
-        >>> from IPython.lib.pretty import pprint
-        >>> examples = {'a': {'z': 1}, 'b': {'z': 2}, 'c': {'z': 1}, 'd': {'z': 1}, 'e': {'z': 3}}
-        >>> it = DictDataset(examples)
-        >>> for k, v in it.groupby(lambda ex: ex['z']).items():
-        ...     print(f'{k}:', list(v), v.keys())
-        ...     print(f'{v!r}')
-        1: [{'z': 1}, {'z': 1}, {'z': 1}] ('a', 'c', 'd')
-          DictDataset(len=5)
-        SliceDataset([0, 2, 3])
-        2: [{'z': 2}] ('b',)
-          DictDataset(len=5)
-        SliceDataset([1])
-        3: [{'z': 3}] ('e',)
-          DictDataset(len=5)
-        SliceDataset([4])
+        Groups elements in the dataset using `group_fn`.
+
+        `group_fn` takes exactly one example as its only positional argument and
+        returns a group ID. This group ID can be any hashable value (i.e., any
+        value that can be used as a key in a `dict`). All examples for
+        which `group_fn` returns the same group ID are grouped into one
+        `Dataset`.
+
+        This method is inspired by `itertools.groupby`, where `group_fn`
+        roughly behaves like the `key` function of `itertools.groupby`.
+
+        Args:
+            group_fn: A function which takes one element of the dataset and
+                returns a hashable value as the group ID
+
+        Returns:
+            `dict` that maps from group ID to a `Dataset` that contains all
+            elements that were mapped to the this group ID by `group_fn`
+
+        Example:
+            >>> from IPython.lib.pretty import pprint
+            >>> examples = {'a': {'z': 1}, 'b': {'z': 2}, 'c': {'z': 1}, 'd': {'z': 1}, 'e': {'z': 3}}
+            >>> it = DictDataset(examples)
+            >>> for k, v in it.groupby(lambda ex: ex['z']).items():
+            ...     print(f'{k}:', list(v), v.keys())
+            ...     print(f'{v!r}')
+            1: [{'z': 1}, {'z': 1}, {'z': 1}] ('a', 'c', 'd')
+              DictDataset(len=5)
+            SliceDataset([0, 2, 3])
+            2: [{'z': 2}] ('b',)
+              DictDataset(len=5)
+            SliceDataset([1])
+            3: [{'z': 3}] ('e',)
+              DictDataset(len=5)
+            SliceDataset([4])
         """
         iterable = enumerate(list(self.map(group_fn)))
         groups = collections.defaultdict(list)
@@ -491,18 +642,28 @@ class Dataset:
             groups[k] += indices
         return {k: self[v] for k, v in groups.items()}
 
-    def split(self, sections):
+    def split(self, sections: int) -> List['Dataset']:
         """
-        >>> examples = {'a': {}, 'b': {}, 'c': {}, 'd': {}, 'e': {}}
-        >>> it = DictDataset(examples)
-        >>> it = it.items().map(lambda x: {'example_id': x[0], **x[1]})
-        >>> its = it.split(2)
-        >>> list(its[0])
-        [{'example_id': 'a'}, {'example_id': 'b'}, {'example_id': 'c'}]
-        >>> list(its[1])
-        [{'example_id': 'd'}, {'example_id': 'e'}]
-        >>> its[1].keys()
-        ('d', 'e')
+        Splits the dataset into `sections` number of sections that have
+        approximately equal length. The order of elements is not modified.
+
+        Args:
+            sections: Number of sections to divide this dataset into
+
+        Returns:
+            `list` of one `Dataset` for each section
+
+        Example:
+            >>> examples = {'a': {}, 'b': {}, 'c': {}, 'd': {}, 'e': {}}
+            >>> it = DictDataset(examples)
+            >>> it = it.items().map(lambda x: {'example_id': x[0], **x[1]})
+            >>> its = it.split(2)
+            >>> list(its[0])
+            [{'example_id': 'a'}, {'example_id': 'b'}, {'example_id': 'c'}]
+            >>> list(its[1])
+            [{'example_id': 'd'}, {'example_id': 'e'}]
+            >>> its[1].keys()
+            ('d', 'e')
         """
         if sections < 1:
             raise ValueError("sections must be >= 1")
@@ -514,36 +675,50 @@ class Dataset:
         slices = np.array_split(np.arange(len(self)), sections)
         return [self[s] for s in slices]
 
-    def sort(self, key_fn=None, sort_fn=sorted, reverse=False):
+    def sort(self, key_fn: Optional[callable] = None,
+             sort_fn: callable = sorted,
+             reverse: bool = False) -> 'Dataset':
         """
         Sorts the dataset. The sort key is extracted from each example with
-        the key_fn. The sort_fn allows to influence the sorting,
-        e.g. natsort.natsorted. It is expected to have reverse as an argument.
+        the `key_fn`. The `sort_fn` allows to influence the sorting,
+        e.g. `natsort.natsorted`.
+        When the `key_fn` is `None`, the returned iterator is sorted according
+        to `sort_fn(self.keys())`.
 
-        When the key_fn is None, the returned iterator is sorted according to
-        `sort_fn(self.keys())`.
+        Args:
+            key_fn: Function that takes an element of this dataset and returns a
+                key to sort by.
+            sort_fn: Function used for sorting. Defaults to `sorted`, but can be
+                set to, e.g., `natsort.natsorted`. The function must take a
+                sequence of values and the keyword argument `reverse` and return
+                a sorted sequence.
+            reverse: If `True`, sort in reversed order.
 
-        >>> examples = {'a': {'x': 1}, 'b': {'x': 3},  'c': {'x': 12}, 'd': {'x': 2}}
-        >>> it = DictDataset(examples)
+        Returns:
+            The sorted dataset
 
-        Sort by value
-        >>> it_sorted = it.sort(lambda ex: ex['x'])
-        >>> it_sorted
-          DictDataset(len=4)
-        SliceDataset([0, 3, 1, 2])
-        >>> print(it_sorted.slice)
-        [0 3 1 2]
-        >>> dict(it_sorted)
-        {'a': {'x': 1}, 'd': {'x': 2}, 'b': {'x': 3}, 'c': {'x': 12}}
+        Example:
+            >>> examples = {'a': {'x': 1}, 'b': {'x': 3},  'c': {'x': 12}, 'd': {'x': 2}}
+            >>> it = DictDataset(examples)
 
-        Sort reversed by value
-        >>> it_sorted = it.sort(lambda ex: ex['x'], reverse=True)
-        >>> dict(it_sorted)
-        {'c': {'x': 12}, 'b': {'x': 3}, 'd': {'x': 2}, 'a': {'x': 1}}
+            Sort by value
+            >>> it_sorted = it.sort(lambda ex: ex['x'])
+            >>> it_sorted
+              DictDataset(len=4)
+            SliceDataset([0, 3, 1, 2])
+            >>> print(it_sorted.slice)
+            [0 3 1 2]
+            >>> dict(it_sorted)
+            {'a': {'x': 1}, 'd': {'x': 2}, 'b': {'x': 3}, 'c': {'x': 12}}
 
-        Sort by example key
-        >>> dict(it_sorted.sort())
-        {'a': {'x': 1}, 'b': {'x': 3}, 'c': {'x': 12}, 'd': {'x': 2}}
+            Sort reversed by value
+            >>> it_sorted = it.sort(lambda ex: ex['x'], reverse=True)
+            >>> dict(it_sorted)
+            {'c': {'x': 12}, 'b': {'x': 3}, 'd': {'x': 2}, 'a': {'x': 1}}
+
+            Sort by example key
+            >>> dict(it_sorted.sort())
+            {'a': {'x': 1}, 'b': {'x': 3}, 'c': {'x': 12}, 'd': {'x': 2}}
         """
         if key_fn is None:
             sort_order = sort_fn(self.keys())
@@ -558,22 +733,36 @@ class Dataset:
             ]
         return self[sort_order]
 
-    def shard(self, num_shards, shard_index):
+    def shard(self, num_shards, shard_index) -> 'Dataset':
         """
         Splits an dataset into `num_shards` shards and
-        selects shard `shard_index`.
+        selects shard `shard_index`. Can be used to split the dataset
+        between multiple processes (e.g. by using MPI). This is equivalent to
+        `ds.split(num_shards)[shard_index]`.
+
+        Args:
+            num_shards: Number of shards
+            shard_index: Shard index to select
+
+        Returns:
+            Shard number `shard_index`
         """
         return self.split(num_shards)[shard_index]
 
-    def batch(self, batch_size, drop_last=False):
+    def batch(self, batch_size: int, drop_last: bool = False) -> 'BatchDataset':
         """
+        Create batches of size `batch_size` from the elements in this dataset.
+        One batch is a list of elements of length `batch_size` (or slightly
+        shorter for the last batch if `drop_last=False`). It usually makes sense
+        to map a collate function after performing the batch operation.
 
         Args:
-            batch_size:
-            drop_last:
+            batch_size: The size of the batches
+            drop_last: If `True`, the last batch is dropped if it is smaller
+                than `batch_size`
 
         Returns:
-
+            Dataset of batches (lists of elements)
         """
         return BatchDataset(self, batch_size, drop_last)
 
@@ -605,18 +794,22 @@ class Dataset:
             sort_by_key=sort_by_key
         )
 
-    def unbatch(self):
+    def unbatch(self) -> 'UnbatchDataset':
         """
-        Divides a batch of examples into single examples.
-        E.g. after splitting a (multi-channel) source example into a list of
-        single channel examples using .map() .
+        Divides a batch of examples into single examples, i.e. reverts
+        `.batch()`.
+        E.g., after splitting a (multi-channel) source example into a list of
+        single channel examples using `.map(fragment_fn)`. The resulting
+        `Dataset` does not implement `__len__`, because the count of resulting
+        elements cannot be computed beforehand.
 
-        >>> examples = {'a': [1, 2], 'b': [3, 4]}
-        >>> it = DictDataset(examples)
-        >>> list(it)
-        [[1, 2], [3, 4]]
-        >>> list(it.unbatch())
-        [1, 2, 3, 4]
+        Example:
+            >>> examples = {'a': [1, 2], 'b': [3, 4]}
+            >>> it = DictDataset(examples)
+            >>> list(it)
+            [[1, 2], [3, 4]]
+            >>> list(it.unbatch())
+            [1, 2, 3, 4]
         """
         return UnbatchDataset(self)
 
@@ -640,53 +833,70 @@ class Dataset:
 
     def random_choice(
             self,
-            size=None,
-            replace=False,
-            rng_state: np.random.RandomState=np.random,
+            size: Optional[int] = None,
+            replace: bool = False,
+            rng_state: np.random.RandomState = np.random,
     ):
         """
-        >>> rng_state = np.random.RandomState(0)
-        >>> examples = {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
-        >>> it = DictDataset(examples)
-        >>> def foo(ex):
-        ...     print('foo')
-        ...     return ex
-        >>> it = it.map(foo)
-        >>> print('Number', it.random_choice(rng_state=rng_state))
-        foo
-        Number 3
+        Draws random samples from the dataset using the random number generator
+        `rng_state`.
 
-        >>> print(it.random_choice(1, rng_state=rng_state))
-        SliceDataset([0])
-        >>> print(it.random_choice(2, rng_state=rng_state))
-        SliceDataset([1 3])
-        >>> it_choice = it.random_choice(7, rng_state=rng_state, replace=True)
-        >>> print(it_choice)
-        SliceDataset([0 4 2 1 0 1 1])
-        >>> print(list(it_choice))
-        foo
-        foo
-        foo
-        foo
-        foo
-        foo
-        foo
-        [1, 5, 3, 2, 1, 2, 2]
+        Args:
+            size: Size of the result. Must be smaller then `len(datset)` if
+                `replace=False`.
+            replace: Whether the examples are drawn with or without replacement.
+                If `True`, an example can appear multiple times in the drawn
+                output.
+            rng_state: Used random number generator
+
+        Returns:
+            A `Dataset` that contains the drawn elements
+
+        Example:
+            >>> rng_state = np.random.RandomState(0)
+            >>> examples = {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
+            >>> it = DictDataset(examples)
+            >>> def foo(ex):
+            ...     print('foo')
+            ...     return ex
+            >>> it = it.map(foo)
+            >>> print('Number', it.random_choice(rng_state=rng_state))
+            foo
+            Number 3
+
+            >>> print(it.random_choice(1, rng_state=rng_state))
+            SliceDataset([0])
+            >>> print(it.random_choice(2, rng_state=rng_state))
+            SliceDataset([1 3])
+            >>> it_choice = it.random_choice(7, rng_state=rng_state, replace=True)
+            >>> print(it_choice)
+            SliceDataset([0 4 2 1 0 1 1])
+            >>> print(list(it_choice))
+            foo
+            foo
+            foo
+            foo
+            foo
+            foo
+            foo
+            [1, 5, 3, 2, 1, 2, 2]
         """
         i = rng_state.choice(len(self), size=size, replace=replace)
         return self[i]
 
-    def apply(self, apply_fn: callable):
-        """Allows to apply functions to the complete dataset, not to the
-        examples itself.
+    def apply(self, apply_fn: callable) -> 'Dataset':
+        """
+        Allows to apply functions to the complete dataset, not to the
+        examples itself. Is equivalent to `dataset = apply_fn(dataset)`, but
+        calls to `apply` can be easily chained.
 
         Args:
-            apply_fn: For now, it is a single function, e.g.
+            apply_fn: For now, it is a single function, e.g.,
                 `lambda it: it.shard(num_shards, shard_index)` but can
                 potentially be a list in future implementations.
 
         Returns:
-
+            The transformed `Dataset`
         """
         if apply_fn is None:
             return self
@@ -821,7 +1031,7 @@ class MapDataset(Dataset):
     @property
     def indexable(self):
         return self.input_dataset.indexable
-    
+
     def __str__(self):
         map_function_str = str(self.map_function)
         if 'built-in function' in map_function_str:
@@ -852,6 +1062,7 @@ class ParMapDataset(MapDataset):
     """
     Should this dataset support getitem? Getitem disables the buffer.
     """
+
     def __init__(
             self, map_function, input_dataset, num_workers, buffer_size,
             backend='t'
@@ -872,7 +1083,6 @@ class ParMapDataset(MapDataset):
         )
 
     def __iter__(self):
-
         from lazy_dataset.parallel_utils import lazy_parallel_map
 
         return lazy_parallel_map(
@@ -910,6 +1120,7 @@ class CatchExceptionDataset(Dataset):
       MapDataset(<function foo at ...>)
     CatchExceptionDataset()
     """
+
     def __init__(
             self,
             input_dataset,
@@ -996,20 +1207,23 @@ class PrefetchDataset(Dataset):
     def indexable(self):
         return False
 
+    def __len__(self):
+        if self.catch_filter_exception:
+            raise TypeError(
+                f'__len__ is not implemented for {self.__class__} ' +
+                f'if `catch_filter_exception` is set.\n' +
+                f'self: \n{repr(self)}'
+            )
+        else:
+            return len(self.input_dataset)
+
     def __iter__(self):
         # Convert ReShuffleDataset to ShuffleDataset
         input_dataset = self.input_dataset.copy(freeze=True)
 
         from lazy_dataset.parallel_utils import lazy_parallel_map
 
-        if (
-                self.catch_filter_exception is False
-                or self.catch_filter_exception is None
-                or (
-                    isinstance(self.catch_filter_exception, (tuple, list))
-                    and len(self.catch_filter_exception) == 0
-                )
-        ):
+        if not self.catch_filter_exception:
             yield from lazy_parallel_map(
                 input_dataset.__getitem__,
                 range(len(self.input_dataset)),
@@ -1133,14 +1347,9 @@ class LocalShuffleDataset(Dataset):
 
     def __iter__(self):
         buffer = list()
-        print(f'Filling Shuffle Buffer with {self.buffer_size} samples.')
-        buffer_filled = False
         for element in self.input_dataset:
             buffer.append(element)
             if len(buffer) >= self.buffer_size:
-                if not buffer_filled:
-                    print('Shuffle Buffer filled.')
-                    buffer_filled = True
                 yield buffer.pop(int(np.random.choice(self.buffer_size)))
         random.shuffle(buffer)
         for element in buffer:
@@ -1214,7 +1423,8 @@ class SliceDataset(Dataset):
 
     @property
     def indexable(self):
-        assert self.input_dataset.indexable, (self.input_dataset.indexable, self.input_dataset)
+        assert self.input_dataset.indexable, (
+            self.input_dataset.indexable, self.input_dataset)
         return True
 
     _keys = None
@@ -1439,13 +1649,12 @@ class ZipDataset(Dataset):
 
         """
         self.input_datasets = input_datasets
-        assert len(self.input_datasets) >= 1, \
-            'You have to provide at least one dataset.' \
-            f'\n{self.input_datasets}'
-        assert len(self.input_datasets) >= 2, \
-            'Currently limited to at least two dataset. Could be removed.' \
-            f'\n{self.input_datasets}'
-        lengths = [len(it) for it in self.input_datasets]
+        assert len(self.input_datasets) >= 1, (f'You have to provide at least '
+                                               f'one dataset.'
+                                               f'\n{self.input_datasets}')
+        assert len(self.input_datasets) >= 2, (f'Currently limited to at least '
+                                               f'two dataset. Could be removed.'
+                                               f'\n{self.input_datasets}')
         keys = set(self.input_datasets[0].keys())
         lengths = [
             len(keys - set(it.keys())) for it in self.input_datasets
@@ -1455,9 +1664,9 @@ class ZipDataset(Dataset):
                 keys - set(it.keys()) for it in self.input_datasets
             ]
             raise AssertionError(
-                f'Expect that all input_datasets have at least the same keys as ' \
-                f'the first. To much keys: {missing_keys}' \
-                f'\n{self.input_datasets}'
+                f'Expect that all input_datasets have at least the same keys '
+                f'as the first. To many keys: '
+                f'{missing_keys}\n{self.input_datasets}'
             )
 
     def copy(self, freeze=False):
@@ -1539,6 +1748,7 @@ class BatchDataset(Dataset):
     BatchDataset(batch_size=3)
 
     """
+
     def __init__(self, input_dataset, batch_size, drop_last=False):
         self.input_dataset = input_dataset
         self.batch_size = batch_size
@@ -1600,6 +1810,7 @@ class UnbatchDataset(Dataset):
     """
     Divides a batch of examples into single examples.
     """
+
     def __init__(self, input_dataset):
         self.input_dataset = input_dataset
 
@@ -1639,6 +1850,7 @@ class DynamicBucketDataset(Dataset):
     >>> [batch for batch in batch_dataset]
     [[10, 8], [1], [5, 4], [7], [2]]
     """
+
     def __init__(
             self, input_dataset, batch_size, key, max_padding_rate,
             total_size_threshold=None, expiration=None, drop_incomplete=False,
@@ -1646,7 +1858,6 @@ class DynamicBucketDataset(Dataset):
     ):
         """dynamically spawn and gather examples into buckets.
         Note that this class is work in progress
-
         Args:
             input_dataset:
             batch_size: max batch_size (can be smaller if expiration or
@@ -1688,7 +1899,10 @@ class DynamicBucketDataset(Dataset):
             batch_size=self.batch_size,
             key=self.key,
             max_padding_rate=self.max_padding_rate,
+            total_size_threshold=self.total_size_threshold,
+            expiration=self.expiration,
             drop_incomplete=self.drop_incomplete,
+            sort_by_key=self.sort_by_key
         )
 
     @property
@@ -1701,17 +1915,18 @@ class DynamicBucketDataset(Dataset):
             value = self.key(example)
             found_bucket = False
             for j, (
-                bucket, creation_idx, lower_bound, upper_bound, max_value
+                    bucket, creation_idx, lower_bound, upper_bound, max_value
             ) in enumerate(buckets):
                 if lower_bound <= value <= upper_bound:
                     bucket.append(example)
                     max_value = max(max_value, value)
                     if (
-                        len(bucket) >= self.batch_size
-                        or (
+                            len(bucket) >= self.batch_size
+                            or (
                             self.total_size_threshold is not None
-                            and (len(bucket) * max_value) > self.total_size_threshold
-                        )
+                            and (len(
+                        bucket) * max_value) > self.total_size_threshold
+                    )
                     ):
                         if self.sort_by_key:
                             bucket = sorted(bucket, key=self.key, reverse=True)
@@ -1750,7 +1965,8 @@ class DynamicBucketDataset(Dataset):
                         expired.add(j)
                         if not self.drop_incomplete:
                             if self.sort_by_key:
-                                bucket = sorted(bucket, key=self.key, reverse=True)
+                                bucket = sorted(bucket, key=self.key,
+                                                reverse=True)
                             yield bucket
                         else:
                             # ToDo: maybe add warning

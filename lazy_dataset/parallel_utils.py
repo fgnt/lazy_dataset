@@ -1,6 +1,7 @@
 import queue
 import concurrent.futures
 import os
+from typing import Iterable, Optional
 
 
 def ensure_single_thread_numeric():
@@ -42,38 +43,72 @@ def _dill_mp_helper(payload):
 
 
 def lazy_parallel_map(
-        function,
-        generator,
+        function: callable,
+        generator: Iterable,
         *,
-        args=[],
-        kwargs={},
-        backend="t",
-        buffer_size=5,
-        max_workers=2
+        args: Optional[list] = None,
+        kwargs: Optional[dict] = None,
+        backend: str = "t",
+        buffer_size: int = 5,
+        max_workers: int = 2
 ):
     """
     This is a parallel map where the function is parallel executed and the
-    output is buffered. Note the generator is executed serial.
+    output is buffered. Note the generator is executed serially.
 
-    A serial version of this function is:
+    A serial version of this function is::
+
         for ele in generator:
             yield function(ele, *args, **kwargs)
+
     The function is executed in parallel (not the generator) and the output of
     the function is buffered.
 
+    Available backends are:
+        - 'mp': Multiprocessing backend. Uses a
+            `pathos.multiprocessing.ProcessPool` to parallelize
+        - 'dill_mp': Uses `concurrent.futures.ProcessPoolExecutor` to
+            parallelize and `dill` for serialization of arguments and
+            results of `function`
+        - 't' / 'threaded': Uses a `concurrent.futures.ThreadPoolExecutor`
+        - 'concurrent_mp': Uses a `concurrent.futures.ProcessPoolExecutor`.
+            Note that this uses `pickle` for serialization, so it can not
+            handle arbitrary callable objects as `function`.
+
+    Args:
+        function: Function to map. Must accept an element of `generator` as
+            first positional argument. The provided `args` and `kwargs` are
+            forwarded to `function` as `function(element, *args, **kwargs)`.
+        generator: Generator to iterate over
+        args: Additional arguments for `function`
+        kwargs: Additional keyword arguments for `function`
+        backend: The backend to use
+        buffer_size: Number of examples to buffer
+        max_workers: Maximum number of threads/processes used for parallel
+            execution
+
+    Yields:
+        The results of function applied to each element of `generator`. The
+        order of the elements produces by `generator` is preserved.
+
     Note:
      - The overhead to copy the data from and to the workers can destroy the
-       gain from multiprosess ('mp', 'dill_mp').
+       gain from mutiprocessing ('mp', 'dill_mp').
        Only the threaded backend ('t') has no copy overhead.
      - When the function spends a high amount of time in numpy and/or I/O the
        threaded backend ('t') is recommended. The reason for numpy is, that it
        usually releases the GIL.
      - Do not forget to disable low level parallel execution
        (see `ensure_single_thread_numeric`) when you have CPU bound code.
-       For bad combinations, the parallel execution can be slower that the
+       For bad combinations, the parallel execution can be slower than the
        serial execution.
 
     """
+    if kwargs is None:
+        kwargs = {}
+    if args is None:
+        args = []
+
     if max_workers > 1 or backend is False:
         ensure_single_thread_numeric()
 
@@ -143,9 +178,7 @@ def lazy_parallel_map(
         # First fill the buffer
         # If buffer full, take one element and push one new inside
         for ele in generator:
-            # print(q.qsize(), 'q.qsize()', buffer_size)
             if q.qsize() >= buffer_size:
-                # print('y1')
                 yield result(q.get())
             q.put(submit(executor, function, ele, *args, **kwargs))
         while not q.empty():
