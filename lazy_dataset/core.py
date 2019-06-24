@@ -577,69 +577,6 @@ class Dataset:
         """
         return BatchDataset(self, batch_size, drop_last)
 
-    def get_bucket_indices(self, key, num_buckets):
-        """
-
-        Args:
-            key:
-            num_buckets:
-
-        Returns:
-
-        """
-        if callable(key):
-            key_fn = key
-        elif isinstance(key, str):
-            key_fn = lambda x: x[key]
-        else:
-            raise ValueError(key)
-
-        assert self.indexable
-        lengths_dict = {key: key_fn(self[key]) for key in self.keys()}
-        percentiles = np.linspace(0, 100, num_buckets + 1, endpoint=True)[1:]
-        bucket_boundaries = np.percentile(
-            list(lengths_dict.values()), percentiles, interpolation='midpoint'
-        )
-        bucket_indices = {
-            key: np.argmax([length <= boundary for boundary in bucket_boundaries])
-            for key, length in lengths_dict.items()
-        }
-        return bucket_indices
-
-    def bucket(self, bucket_indices):
-        """
-
-        Args:
-            bucket_indices:
-
-        Returns:
-
-        """
-        assert self.indexable
-        bucket_indices = np.array([bucket_indices[key] for key in self.keys()])
-        buckets = [
-            self[np.argwhere(bucket_indices == i).flatten().tolist()]
-            for i in sorted(set(bucket_indices.tolist()))
-        ]
-        return buckets
-
-    def batch_bucket(self, bucket_indices, batch_size, drop_last=False):
-        """
-
-        Args:
-            bucket_indices:
-            batch_size:
-            drop_last:
-
-        Returns:
-
-        """
-        buckets = self.bucket(bucket_indices)
-        return concatenate([
-            bucket.batch(batch_size, drop_last=drop_last)
-            for bucket in buckets
-        ])
-
     def batch_bucket_dynamic(
             self, batch_size, key, max_padding_rate, max_total_size=None,
             expiration=None, drop_incomplete=False, sort_by_key=False):
