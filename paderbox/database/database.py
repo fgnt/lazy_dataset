@@ -196,7 +196,7 @@ class Database:
 
         Adds the example_id and dataset_name to each example dict.
 
-        :param dataset_names: list or str specifying the datasets of interest.
+        :param names: list or str specifying the datasets of interest.
             If None an iterator over the complete databases will be returned.
         :return:
         """
@@ -253,7 +253,7 @@ class Database:
         """Alias of get_dataset_by_names.
 
         Iterators are lazy datasets now.
-        This provides compatiblity with the way things used to be.
+        This provides compatibility with the way things used to be.
         """
         return self.get_dataset(dataset_names)
 
