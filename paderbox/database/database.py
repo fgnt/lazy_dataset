@@ -276,12 +276,22 @@ class Database:
         return lambda x: load_audio(x)
 
     def get_lengths(self, datasets, length_transform_fn=lambda x: x):
+        """
+        Retrieves list of num_samples. This can be helpful to display overall
+        database statistics or to decide about bucket boundaries for bucket
+        sort.
+
+        Args:
+            datasets:
+            length_transform_fn:
+
+        Returns:
+
+        """
         it = self.get_iterator_by_names(datasets)
         lengths = dict()
         for example in it:
             num_samples = example[NUM_SAMPLES]
-            if isinstance(num_samples, dict):
-                num_samples = num_samples[OBSERVATION]
             example_id = example[EXAMPLE_ID]
             lengths[example_id] = (length_transform_fn(num_samples))
         return lengths
