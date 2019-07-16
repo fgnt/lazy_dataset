@@ -292,6 +292,8 @@ class Database:
         lengths = dict()
         for example in it:
             num_samples = example[NUM_SAMPLES]
+            if isinstance(num_samples, dict):
+                num_samples = num_samples[OBSERVATION]
             example_id = example[EXAMPLE_ID]
             lengths[example_id] = (length_transform_fn(num_samples))
         return lengths
