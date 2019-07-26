@@ -206,6 +206,8 @@ class Database:
 
         Adds the example_id and dataset_name to each example dict.
 
+        This function should never be overwritten.
+
         :param names: list or str specifying the datasets of interest.
             If None an iterator over the complete databases will be returned.
         :return:
