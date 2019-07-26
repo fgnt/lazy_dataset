@@ -48,6 +48,16 @@ An observation/ example has information according to the keys file.
 If a database does not have different arrays, the array dimension can be
 omitted. Same holds true for the channel axis or the speaker axis.
 
+Num samples (Used for bucket boundaries in batching)
+- If num_samples has the same value for all signals it is supposed to be a
+    scalar, this holds for close to all databases.
+    (e.g. num_samples=42...)
+- If one observation has different number of samples, num_samples is a
+    dictorionary with the same structure as audio_path/observation.
+    (e.g. num_samples=dict(observation=dict(U1=42...)), Chime5, etc...)
+- At the moment we keep the dict structure of num_samples in WSJ_BSS for
+    backward compatibility for LD
+
 The different axis have to be natsorted, when they are converted to numpy
 arrays. Skipping numbers (i.e. c0, c99) is database specific and is not handled
 by a generic implementation.
