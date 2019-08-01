@@ -207,7 +207,7 @@ class DictDatabase(Database):
         A simple database class intended to hold a given database_dict.
 
         Args:
-            database_dict: A json serializeable database dictionary.
+            database_dict: A pickle serializeable database dictionary.
         """
         self._data = database_dict
         super().__init__()
