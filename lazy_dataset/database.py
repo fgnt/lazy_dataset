@@ -8,7 +8,8 @@ import lazy_dataset
 class Database:
     """Base class for databases.
 
-    This class is abstract!"""
+    This class is abstract!
+    """
 
     def __init__(self):
         self._dataset_weak_ref_dict = weakref.WeakValueDictionary()
@@ -31,10 +32,11 @@ class Database:
             }
         }
 
-        The under the key `datasets` are the datasets, where each dataset
-        is a dictionary from example_id to example. Is is assumed that the
-        example is a dictionary and does not contain the keys `dataset` and
-        `example_id`. These keys are added in the `get_dataset` method.
+        Under the key `datasets` are the datasets, where each dataset
+        is a dictionary that mapps from an example_id to the example. Is is
+        assumed that the example is a dictionary and does not contain the keys
+        `dataset` and `example_id`. These keys are added in the `get_dataset`
+        method.
 
         Under the key `alias` are datasets listed that group multiple datasets
         to a new dataset.
@@ -42,6 +44,37 @@ class Database:
         Beside the keys `datasets` and `alias` may exist further keys, they
         are ignored in the base class, but may be used in inherited database
         classes.
+
+        In case of an speech audio mixture an example may look as follows:
+
+            audio_path:
+                speech_source:
+                    <path to speech of speaker 0>
+                    <path to speech of speaker 1>
+                observation:
+                    blue_array: (a list, since there are no missing channels)
+                        <path to observation of blue_array and channel 0>
+                        <path to observation of blue_array and channel 0>
+                        ...
+                    red_array: (special case for missing channels)
+                        c0: <path to observation of red_array and channel 0>
+                        c99: <path to observation of red_array and channel 99>
+                        ...
+                speech_image:
+                    ...
+            speaker_id:
+                <speaker_id for speaker 0>
+                ...
+            gender:
+                <m/f>
+                ...
+
+        The example does not contain binary data (e.g. audio signals).
+        Instead it contains the paths to them. In this may big databases fit
+        into the memory. In a later map function the binary data can be loaded.
+
+        We recommend to use absolute paths to the data, so that working with
+        the example is as easy as possible.
         """
         raise NotImplementedError(
             f'Override this property in {self.__class__.__name__}!')
@@ -81,9 +114,14 @@ class Database:
 
         This function should never be overwritten.
 
-        :param names: list or str specifying the datasets of interest.
-            If None an iterator over the complete databases will be returned.
-        :return:
+        Args:
+            name: list or str specifying the datasets of interest.
+            If None an exception msg is raised that shows all available names.
+            When the requested dataset does not exist, the closest matches are
+            displayed in the exception msg.
+
+        Returns:
+            A lazy dataset.
         """
         if name is None:
             raise TypeError(
@@ -94,9 +132,10 @@ class Database:
             datasets = [self.get_dataset(n) for n in name]
             return lazy_dataset.concatenate(*datasets)
 
-        # Resulting dataset is immutable anyway due to pickle a few lines
-        # further down. This code here avoids to store the resulting
-        # dataset more than once in memory. Discuss with CBJ for details.
+        # Resulting dataset is immutable anyway due to pickle in
+        # `lazy_dataset.from_dict`. This code here avoids to store the
+        # resulting dataset more than once in memory. Discuss with CBJ for
+        # details.
         try:
             return self._dataset_weak_ref_dict[name]
         except KeyError:
