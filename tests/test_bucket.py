@@ -1,4 +1,5 @@
 import lazy_dataset
+from lazy_dataset.core import TimeSeriesBucket
 
 
 def test_bucket():
@@ -7,7 +8,8 @@ def test_bucket():
     ds = lazy_dataset.new(examples)
 
     dynamic_batched_buckets = list(ds.batch_bucket_dynamic(
-        batch_size=2, key=lambda x: x, max_padding_rate=0.5
+        bucket_cls=TimeSeriesBucket, batch_size=2, len_key=lambda x: x,
+        max_padding_rate=0.5
     ))
     assert dynamic_batched_buckets == [
         [10, 5], [7, 8], [1, 2], [4, 3], [6, 9], [20], [1]

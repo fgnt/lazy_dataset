@@ -767,42 +767,34 @@ class Dataset:
         return BatchDataset(self, batch_size, drop_last)
 
     def batch_bucket_dynamic(
-            self, batch_size, key, max_padding_rate, total_size_threshold=None,
-            expiration=None, drop_incomplete=False, sort_by_key=False):
+            self, bucket_cls, expiration=None, drop_incomplete=False,
+            sort_key=None, reverse_sort=False, *bucket_args, **bucket_kwargs):
         """dynamically spawn and gather examples into buckets.
         
         Note that this operation is work in progress
         
         Args:
-            input_dataset:
-            batch_size: max batch_size (can be smaller if expiration or
-                max_total_size is set)
-            key: callable or dict key returning a scalar length given an
-                example dict
-            max_padding_rate: the maximum padding that has to be added to a
-                signal in a bucket. E.g. if set to 0.2, a example of length 100
-                can only be in a bucket with examples with lengths from 80 to 125.
-            total_size_threshold: total size of a bucket (len(bucket)*max_length_in_bucket)
-                after which a bucket is emitted though len(bucket) < batch_size
+            bucket_cls: Bucket class to be used for bucketing. Must implement
+                methods maybe_append(example) and is_completed().
             expiration: maximum life time of a bucket. After this number of
-                subsequently yielded batches it is either emitted
+                subsequent examples it is either emitted
                 (if drop_incomplete is False) or discarded
             drop_incomplete: if True drop incomplete buckets at the end of
                 iteration or when buckets expire, else emit them.
-            sort_by_key: if True reversely sorts the bucket by the lengths of
-                the examples before emitting. This simplifies getting the
-                maximum length of the bucket (e.g. pytorchs PackedSequence
-                requires reversely sorted batches).
+            sort_key: optional callable or dict key returning a scalar to sort
+                examples in bucket before emission.
+            reverse_sort: if True and sort_key is not None, examples in bucket
+                are sorted reversely before emission (e.g. pytorchs
+                PackedSequence requires reversely sorted batches).
         """
         return DynamicBucketDataset(
             self,
-            batch_size=batch_size,
-            key=key,
-            max_padding_rate=max_padding_rate,
-            total_size_threshold=total_size_threshold,
+            bucket_cls=bucket_cls,
             expiration=expiration,
             drop_incomplete=drop_incomplete,
-            sort_by_key=sort_by_key
+            sort_key=sort_key,
+            reverse_sort=reverse_sort,
+            *bucket_args, **bucket_kwargs
         )
 
     def unbatch(self) -> 'UnbatchDataset':
@@ -1841,79 +1833,161 @@ class UnbatchDataset(Dataset):
                 yield example
 
 
+class Bucket:
+    def __init__(self, init_example, batch_size):
+        """
+        Base Bucket performing standard batching.
+        You can inherit this class to define sophisticated buckets.
+
+        Args:
+            init_example: first example in the batch
+            batch_size: number of examples in a batch
+        """
+        self.data = [init_example]
+        self.batch_size = batch_size
+
+    def is_completed(self):
+        return len(self.data) >= self.batch_size
+
+    def assess(self, example):
+        return not self.is_completed()
+
+    def maybe_append(self, example):
+        if self.assess(example):
+            self.data.append(example)
+            return True
+        return False
+
+
+class TimeSeriesBucket(Bucket):
+    def __init__(
+            self, init_example, batch_size, len_key, max_padding_rate,
+            max_total_size=None
+    ):
+        """
+        Bucket of examples with similar sequence lengths to prevent excessive
+        padding.
+
+        Args:
+            init_example: first example in the batch
+            batch_size: maximum number of examples in a batch (can be smaller
+                if max_total_size is set)
+            len_key: callable or dict key returning a scalar length given an
+                example dict
+            max_padding_rate: the maximum padding that has to be added to a
+                signal in a bucket. E.g. if set to 0.2, an example of length
+                100 can only be in a bucket with examples of lengths between
+                80 and 125.
+            max_total_size: maximum total size of a bucket
+                (len(bucket)*max_length_in_bucket). If set, a bucket is
+                completed if adding another example to the bucket would lead
+                to exceeding max_total_size
+
+        """
+        super().__init__(init_example, batch_size)
+        self.len_key = len_key if callable(len_key) else (lambda x: x[len_key])
+        self.max_padding_rate = max_padding_rate
+        self.max_total_size = max_total_size
+
+        init_len = self.len_key(init_example)
+        self.lower_bound = init_len * (1 - self.max_padding_rate)
+        self.upper_bound = init_len / (1 - self.max_padding_rate)
+        self.max_len = init_len
+
+    def is_completed(self):
+        return (
+            super().is_completed()
+            or (
+                self.max_total_size is not None
+                and ((len(self.data) + 1) * self.max_len > self.max_total_size)
+            )
+        )
+
+    def assess(self, example):
+        seq_len = self.len_key(example)
+        return (
+            super().assess(example)
+            and self.lower_bound <= seq_len <= self.upper_bound
+        )
+
+    def maybe_append(self, example):
+        appended = super().maybe_append(example)
+        if appended:
+            seq_len = self.len_key(example)
+            self.lower_bound = max(
+                self.lower_bound, seq_len * (1 - self.max_padding_rate)
+            )
+            self.upper_bound = min(
+                self.upper_bound, seq_len / (1 - self.max_padding_rate)
+            )
+            self.max_len = max(self.max_len, seq_len)
+        return appended
+
+
 class DynamicBucketDataset(Dataset):
     """
     >>> examples = [1, 10, 5, 7, 8, 2, 4]
     >>> batch_dataset = DynamicBucketDataset(\
-        examples, 2, key=lambda x: x, max_padding_rate=0.5)
+        examples, TimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.5)
     >>> [batch for batch in batch_dataset]
     [[10, 5], [7, 8], [1, 2], [4]]
     >>> batch_dataset = DynamicBucketDataset(\
-    examples, 2, key=lambda x: x, max_padding_rate=0.5, drop_incomplete=True)
+    examples, TimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.5, drop_incomplete=True)
     >>> [batch for batch in batch_dataset]
+    Dropped 1 examples
     [[10, 5], [7, 8], [1, 2]]
     >>> batch_dataset = DynamicBucketDataset(\
-    examples, 2, key=lambda x: x, max_padding_rate=0.2)
+    examples, TimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.2)
     >>> [batch for batch in batch_dataset]
     [[10, 8], [5, 4], [1], [7], [2]]
     >>> batch_dataset = DynamicBucketDataset(\
-    examples, 2, key=lambda x: x, max_padding_rate=0.2, expiration=2)
+    examples, TimeSeriesBucket, expiration=4, batch_size=2, len_key=lambda x: x, max_padding_rate=0.2)
     >>> [batch for batch in batch_dataset]
     [[10, 8], [1], [5, 4], [7], [2]]
     """
 
     def __init__(
-            self, input_dataset, batch_size, key, max_padding_rate,
-            total_size_threshold=None, expiration=None, drop_incomplete=False,
-            sort_by_key=False
+            self, input_dataset, bucket_cls,
+            expiration=None, drop_incomplete=False,
+            sort_key=None, reverse_sort=False,
+            *bucket_args, **bucket_kwargs
     ):
         """dynamically spawn and gather examples into buckets.
         Note that this class is work in progress
         Args:
             input_dataset:
-            batch_size: max batch_size (can be smaller if expiration or
-                max_total_size is set)
-            key: callable or dict key returning a scalar length given an
-                example dict
-            max_padding_rate: the maximum padding that has to be added to a
-                signal in a bucket. E.g. if set to 0.2, a example of length 100
-                can only be in a bucket with examples with lengths from 80 to 125.
-            total_size_threshold: total size of a bucket (len(bucket)*max_length_in_bucket)
-                after which a bucket is emitted though len(bucket) < batch_size
+            bucket_cls: Bucket class to be used for bucketing. Must implement
+                methods maybe_append(example) and is_completed().
             expiration: maximum life time of a bucket. After this number of
-                subsequently yielded batches it is either emitted
+                subsequent examples it is either emitted
                 (if drop_incomplete is False) or discarded
             drop_incomplete: if True drop incomplete buckets at the end of
                 iteration or when buckets expire, else emit them.
-            sort_by_key: if True reversely sorts the bucket by the lengths of
-                the examples before emitting. This simplifies getting the
-                maximum length of the bucket (e.g. pytorchs PackedSequence
-                requires reversely sorted batches).
+            sort_key: optional callable or dict key returning a scalar to sort
+                examples in bucket before emission.
+            reverse_sort: if True and sort_key is not None, examples in bucket
+                are sorted reversely before emission (e.g. pytorchs
+                PackedSequence requires reversely sorted batches).
         """
         self.input_dataset = input_dataset
-        self.batch_size = batch_size
-        if callable(key):
-            self.key = key
-        elif isinstance(key, str):
-            self.key = lambda x: x[key]
-        else:
-            raise ValueError(key)
-        self.max_padding_rate = max_padding_rate
-        self.total_size_threshold = total_size_threshold
         self.expiration = expiration
         self.drop_incomplete = drop_incomplete
-        self.sort_by_key = sort_by_key
+        self.sort_key = sort_key if (callable(sort_key) or sort_key is None) \
+            else (lambda x: x[sort_key])
+        self.reverse_sort = reverse_sort
+        self.bucket_cls = bucket_cls
+        self.bucket_args = bucket_args
+        self.bucket_kwargs = bucket_kwargs
 
     def copy(self, freeze=False):
         return self.__class__(
             input_dataset=self.input_dataset.copy(freeze=freeze),
-            batch_size=self.batch_size,
-            key=self.key,
-            max_padding_rate=self.max_padding_rate,
-            total_size_threshold=self.total_size_threshold,
             expiration=self.expiration,
             drop_incomplete=self.drop_incomplete,
-            sort_by_key=self.sort_by_key
+            sort_key=self.sort_key,
+            reverse_sort=self.reverse_sort,
+            *self.bucket_args,
+            **self.bucket_kwargs
         )
 
     @property
@@ -1922,77 +1996,48 @@ class DynamicBucketDataset(Dataset):
 
     def __iter__(self):
         buckets = list()
+        dropped_count = 0
         for i, example in enumerate(self.input_dataset):
-            value = self.key(example)
             found_bucket = False
-            for j, (
-                    bucket, creation_idx, lower_bound, upper_bound, max_value
-            ) in enumerate(buckets):
-                if lower_bound <= value <= upper_bound:
-                    bucket.append(example)
-                    max_value = max(max_value, value)
-                    if (
-                            len(bucket) >= self.batch_size
-                            or (
-                            self.total_size_threshold is not None
-                            and (len(
-                        bucket) * max_value) > self.total_size_threshold
-                    )
-                    ):
-                        if self.sort_by_key:
-                            bucket = sorted(bucket, key=self.key, reverse=True)
-                        yield bucket
+            for j, (bucket, _) in enumerate(buckets):
+                found_bucket = bucket.maybe_append(example)
+                if found_bucket:
+                    if bucket.is_completed():
+                        data = bucket.data
+                        if self.sort_key is not None:
+                            data = sorted(data, key=self.sort_key, reverse=self.reverse_sort)
+                        yield data
                         buckets.pop(j)
-                    else:
-                        lower_bound = max(
-                            lower_bound, value * (1 - self.max_padding_rate)
-                        )
-                        upper_bound = min(
-                            upper_bound, value / (1 - self.max_padding_rate)
-                        )
-                        buckets[j] = (
-                            bucket, creation_idx,
-                            lower_bound, upper_bound, max_value
-                        )
-                    found_bucket = True
                     break
             if not found_bucket:
-                buckets.append((
-                    [example],
-                    i,
-                    value * (1 - self.max_padding_rate),
-                    value / (1 - self.max_padding_rate),
-                    value
-                ))
+                new_bucket = self.bucket_cls(
+                    example, *self.bucket_args, **self.bucket_kwargs
+                )
+                buckets.append((new_bucket, i))
 
             if self.expiration is not None:
-                expired = set()
-                for j, (bucket, creation_idx, *_) in enumerate(buckets):
-                    if (i - creation_idx) / self.batch_size >= self.expiration:
-                        # do not count batches to not get into a blocking state
-                        # if no batch gets ever completed. However also do not
-                        # operate with example counts to prevent the expiration
-                        # parameter being batch_size dependent
-                        expired.add(j)
+                for j in list(range(len(buckets)))[::-1]:
+                    bucket, creation_idx = buckets[j]
+                    if (i - creation_idx) >= self.expiration:
+                        data = bucket.data
                         if not self.drop_incomplete:
-                            if self.sort_by_key:
-                                bucket = sorted(bucket, key=self.key,
-                                                reverse=True)
-                            yield bucket
+                            if self.sort_key is not None:
+                                data = sorted(data, key=self.sort_key, reverse=self.reverse_sort)
+                            yield data
                         else:
-                            # ToDo: maybe add warning
-                            pass
-                for idx in sorted(expired, reverse=True):
-                    buckets.pop(idx)
-        if not self.drop_incomplete:
-            buckets = sorted(buckets, key=lambda x: len(x[0]), reverse=True)
-            for bucket, *_ in buckets:
-                if self.sort_by_key:
-                    bucket = sorted(bucket, key=self.key, reverse=True)
-                yield bucket
-        else:
-            # ToDo: maybe add warning
-            pass
+                            dropped_count += len(data)
+                        buckets.pop(j)
+
+        for bucket, _ in buckets:
+            data = bucket.data
+            if not self.drop_incomplete:
+                if self.sort_key is not None:
+                    data = sorted(data, key=self.sort_key, reverse=self.reverse_sort)
+                yield data
+            else:
+                dropped_count += len(data)
+        if dropped_count > 0:
+            print(f'Dropped {dropped_count} examples')
 
 
 if __name__ == '__main__':
