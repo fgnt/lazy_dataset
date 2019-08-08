@@ -766,16 +766,18 @@ class Dataset:
         """
         return BatchDataset(self, batch_size, drop_last)
 
-    def batch_bucket_dynamic(
+    def batch_dynamic_bucket(
             self, bucket_cls, expiration=None, drop_incomplete=False,
-            sort_key=None, reverse_sort=False, *bucket_args, **bucket_kwargs):
+            sort_key=None, reverse_sort=False, **bucket_kwargs):
         """dynamically spawn and gather examples into buckets.
         
         Note that this operation is work in progress
         
         Args:
             bucket_cls: Bucket class to be used for bucketing. Must implement
-                methods maybe_append(example) and is_completed().
+                methods `maybe_append(example)` and `is_completed()`. The
+                __init__ signature has to be `bucket_cls(init_example, **bucket_kwargs)`
+                (e.g. `TimeSeriesBucket(init_example, batch_size, len_key, max_padding_rate, max_total_size=None)`)
             expiration: maximum life time of a bucket. After this number of
                 subsequent examples it is either emitted
                 (if drop_incomplete is False) or discarded
@@ -786,6 +788,9 @@ class Dataset:
             reverse_sort: if True and sort_key is not None, examples in bucket
                 are sorted reversely before emission (e.g. pytorchs
                 PackedSequence requires reversely sorted batches).
+
+        Returns:
+            A `Dataset` of batches (lists of elements)
         """
         return DynamicBucketDataset(
             self,
@@ -794,7 +799,51 @@ class Dataset:
             drop_incomplete=drop_incomplete,
             sort_key=sort_key,
             reverse_sort=reverse_sort,
-            *bucket_args, **bucket_kwargs
+            **bucket_kwargs
+        )
+
+    def batch_dynamic_time_series_bucket(
+            self, batch_size, len_key, max_padding_rate, max_total_size=None,
+            expiration=None, drop_incomplete=False,
+            sort_key=None, reverse_sort=False
+    ):
+        """
+        Wrapper for `batch_dynamic_bucket` using `DynamicTimeSeriesBucket`
+
+        Args:
+            batch_size: maximum number of examples in a batch (can be smaller
+                if max_total_size is set)
+            len_key: callable or dict key returning a scalar length given an
+                example dict
+            max_padding_rate: the maximum padding that has to be added to a
+                signal in a bucket. E.g. if set to 0.2, an example of length
+                100 can only be in a bucket with examples of lengths between
+                80 and 125.
+            max_total_size: maximum total size of a bucket
+                (len(bucket)*max_length_in_bucket). If set, a bucket is
+                completed if adding another example to the bucket would lead
+                to exceeding max_total_size
+            expiration: maximum life time of a bucket. After this number of
+                subsequent examples it is either emitted
+                (if drop_incomplete is False) or discarded
+            drop_incomplete: if True drop incomplete buckets at the end of
+                iteration or when buckets expire, else emit them.
+            sort_key: optional callable or dict key returning a scalar to sort
+                examples in bucket before emission.
+            reverse_sort: if True and sort_key is not None, examples in bucket
+                are sorted reversely before emission (e.g. pytorchs
+                PackedSequence requires reversely sorted batches).
+
+        Returns:
+            A `Dataset` of batches (lists of elements)
+
+        """
+        return self.batch_dynamic_bucket(
+            bucket_cls=DynamicTimeSeriesBucket, batch_size=batch_size,
+            len_key=len_key, max_padding_rate=max_padding_rate,
+            max_total_size=max_total_size,
+            expiration=expiration, drop_incomplete=drop_incomplete,
+            sort_key=sort_key, reverse_sort=reverse_sort
         )
 
     def unbatch(self) -> 'UnbatchDataset':
@@ -1833,7 +1882,7 @@ class UnbatchDataset(Dataset):
                 yield example
 
 
-class Bucket:
+class DynamicBucket:
     def __init__(self, init_example, batch_size):
         """
         Base Bucket to inherit from when defining custom buckets.
@@ -1852,13 +1901,14 @@ class Bucket:
         raise NotImplementedError
 
     def maybe_append(self, example):
-        if not self.is_completed() and self.assess(example):
+        assert not self.is_completed()
+        if self.assess(example):
             self.data.append(example)
             return True
         return False
 
 
-class TimeSeriesBucket(Bucket):
+class DynamicTimeSeriesBucket(DynamicBucket):
     def __init__(
             self, init_example, batch_size, len_key, max_padding_rate,
             max_total_size=None
@@ -1895,7 +1945,7 @@ class TimeSeriesBucket(Bucket):
 
     def is_completed(self):
         return (
-            len(self.data) >= self.batch_size
+            super().is_completed()
             or (
                 self.max_total_size is not None
                 and ((len(self.data) + 1) * self.max_len > self.max_total_size)
@@ -1924,20 +1974,20 @@ class DynamicBucketDataset(Dataset):
     """
     >>> examples = [1, 10, 5, 7, 8, 2, 4]
     >>> batch_dataset = DynamicBucketDataset(\
-        examples, TimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.5)
+        examples, DynamicTimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.5)
     >>> [batch for batch in batch_dataset]
     [[10, 5], [7, 8], [1, 2], [4]]
     >>> batch_dataset = DynamicBucketDataset(\
-    examples, TimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.5, drop_incomplete=True)
+    examples, DynamicTimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.5, drop_incomplete=True)
     >>> [batch for batch in batch_dataset]
     Dropped 1 examples
     [[10, 5], [7, 8], [1, 2]]
     >>> batch_dataset = DynamicBucketDataset(\
-    examples, TimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.2)
+    examples, DynamicTimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.2)
     >>> [batch for batch in batch_dataset]
     [[10, 8], [5, 4], [1], [7], [2]]
     >>> batch_dataset = DynamicBucketDataset(\
-    examples, TimeSeriesBucket, expiration=4, batch_size=2, len_key=lambda x: x, max_padding_rate=0.2)
+    examples, DynamicTimeSeriesBucket, expiration=4, batch_size=2, len_key=lambda x: x, max_padding_rate=0.2)
     >>> [batch for batch in batch_dataset]
     [[10, 8], [1], [5, 4], [7], [2]]
     """
