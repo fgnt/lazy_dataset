@@ -1900,10 +1900,13 @@ class DynamicBucket:
     def assess(self, example):
         raise NotImplementedError
 
+    def _append(self, example):
+        self.data.append(example)
+
     def maybe_append(self, example):
         assert not self.is_completed()
         if self.assess(example):
-            self.data.append(example)
+            self._append(example)
             return True
         return False
 
@@ -1956,18 +1959,16 @@ class DynamicTimeSeriesBucket(DynamicBucket):
         seq_len = self.len_key(example)
         return self.lower_bound <= seq_len <= self.upper_bound
 
-    def maybe_append(self, example):
-        appended = super().maybe_append(example)
-        if appended:
-            seq_len = self.len_key(example)
-            self.lower_bound = max(
-                self.lower_bound, seq_len * (1 - self.max_padding_rate)
-            )
-            self.upper_bound = min(
-                self.upper_bound, seq_len / (1 - self.max_padding_rate)
-            )
-            self.max_len = max(self.max_len, seq_len)
-        return appended
+    def _append(self, example):
+        super()._append(example)
+        seq_len = self.len_key(example)
+        self.lower_bound = max(
+            self.lower_bound, seq_len * (1 - self.max_padding_rate)
+        )
+        self.upper_bound = min(
+            self.upper_bound, seq_len / (1 - self.max_padding_rate)
+        )
+        self.max_len = max(self.max_len, seq_len)
 
 
 class DynamicBucketDataset(Dataset):
