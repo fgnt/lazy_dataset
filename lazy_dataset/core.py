@@ -1836,8 +1836,7 @@ class UnbatchDataset(Dataset):
 class Bucket:
     def __init__(self, init_example, batch_size):
         """
-        Base Bucket performing standard batching.
-        You can inherit this class to define sophisticated buckets.
+        Base Bucket to inherit from when defining custom buckets.
 
         Args:
             init_example: first example in the batch
@@ -1850,10 +1849,10 @@ class Bucket:
         return len(self.data) >= self.batch_size
 
     def assess(self, example):
-        return not self.is_completed()
+        raise NotImplementedError
 
     def maybe_append(self, example):
-        if self.assess(example):
+        if not self.is_completed() and self.assess(example):
             self.data.append(example)
             return True
         return False
@@ -1896,7 +1895,7 @@ class TimeSeriesBucket(Bucket):
 
     def is_completed(self):
         return (
-            super().is_completed()
+            len(self.data) >= self.batch_size
             or (
                 self.max_total_size is not None
                 and ((len(self.data) + 1) * self.max_len > self.max_total_size)
@@ -1905,10 +1904,7 @@ class TimeSeriesBucket(Bucket):
 
     def assess(self, example):
         seq_len = self.len_key(example)
-        return (
-            super().assess(example)
-            and self.lower_bound <= seq_len <= self.upper_bound
-        )
+        return self.lower_bound <= seq_len <= self.upper_bound
 
     def maybe_append(self, example):
         appended = super().maybe_append(example)
@@ -1949,15 +1945,16 @@ class DynamicBucketDataset(Dataset):
     def __init__(
             self, input_dataset, bucket_cls,
             expiration=None, drop_incomplete=False,
-            sort_key=None, reverse_sort=False,
-            *bucket_args, **bucket_kwargs
+            sort_key=None, reverse_sort=False, **bucket_kwargs
     ):
         """dynamically spawn and gather examples into buckets.
         Note that this class is work in progress
         Args:
             input_dataset:
             bucket_cls: Bucket class to be used for bucketing. Must implement
-                methods maybe_append(example) and is_completed().
+                methods `maybe_append(example)` and `is_completed()`. The
+                __init__ signature has to be `bucket_cls(init_example, **bucket_kwargs)`
+                (e.g. `TimeSeriesBucket(init_example, batch_size, len_key, max_padding_rate, max_total_size=None)`)
             expiration: maximum life time of a bucket. After this number of
                 subsequent examples it is either emitted
                 (if drop_incomplete is False) or discarded
@@ -1976,7 +1973,6 @@ class DynamicBucketDataset(Dataset):
             else (lambda x: x[sort_key])
         self.reverse_sort = reverse_sort
         self.bucket_cls = bucket_cls
-        self.bucket_args = bucket_args
         self.bucket_kwargs = bucket_kwargs
 
     def copy(self, freeze=False):
@@ -1986,7 +1982,6 @@ class DynamicBucketDataset(Dataset):
             drop_incomplete=self.drop_incomplete,
             sort_key=self.sort_key,
             reverse_sort=self.reverse_sort,
-            *self.bucket_args,
             **self.bucket_kwargs
         )
 
@@ -2011,13 +2006,12 @@ class DynamicBucketDataset(Dataset):
                     break
             if not found_bucket:
                 new_bucket = self.bucket_cls(
-                    example, *self.bucket_args, **self.bucket_kwargs
+                    example, **self.bucket_kwargs
                 )
                 buckets.append((new_bucket, i))
 
             if self.expiration is not None:
-                for j in list(range(len(buckets)))[::-1]:
-                    bucket, creation_idx = buckets[j]
+                for j, (bucket, creation_idx) in enumerate(buckets):
                     if (i - creation_idx) >= self.expiration:
                         data = bucket.data
                         if not self.drop_incomplete:
@@ -2027,6 +2021,7 @@ class DynamicBucketDataset(Dataset):
                         else:
                             dropped_count += len(data)
                         buckets.pop(j)
+                        break
 
         for bucket, _ in buckets:
             data = bucket.data
