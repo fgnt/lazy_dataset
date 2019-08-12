@@ -93,7 +93,7 @@ class Database:
 
     def get_examples(self, dataset_name):
         """
-        Get example dict for a certain dataset name. example_id and dataset
+        Get examples dict for a certain dataset name. example_id and dataset
         name are added to each example.
 
         Do not make inplace manipulations of the returned dictionary!!!
