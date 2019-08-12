@@ -91,21 +91,53 @@ class Database:
             self.data.get('alias', {}).keys()
         )
 
-    def _get_dataset_examples_from_data(self, dataset_name):
-        if dataset_name in self.data.get('alias', []):
-            dataset_names = self.data['alias'][dataset_name]
-            examples = {}
-            for name in dataset_names:
-                examples_new = self.data['datasets'][name]
-                intersection = set.intersection(
-                    set(examples.keys()),
-                    set(examples_new.keys()),
-                )
-                assert len(intersection) == 0, intersection
-                examples = {**examples, **examples_new}
-            return examples
-        else:
-            return self.data['datasets'][dataset_name]
+    def get_examples(self, dataset_name):
+        """
+        Get example dict for a certain dataset name. example_id and dataset
+        name are added to each example.
+
+        Do not make inplace manipulations of the returned dictionary!!!
+
+        Args:
+            dataset_name: the name of the requested dataset
+
+        Returns: a dictionary with examples from the requested dataset
+
+        """
+        try:
+            if dataset_name in self.data.get('alias', []):
+                dataset_names = self.data['alias'][dataset_name]
+                examples = {}
+                for name in dataset_names:
+                    examples_new = self.data['datasets'][name]
+                    intersection = set.intersection(
+                        set(examples.keys()),
+                        set(examples_new.keys()),
+                    )
+                    assert len(intersection) == 0, intersection
+                    examples = {**examples, **examples_new}
+            else:
+                examples = {**self.data['datasets'][dataset_name]}
+        except KeyError:
+            import difflib
+            similar = difflib.get_close_matches(
+                dataset_name, self.dataset_names, n=5, cutoff=0)
+            raise KeyError(dataset_name, f'close_matches: {similar}', self)
+
+        if len(examples) == 0:
+            # When somebody need empty datasets, add an option to this
+            # function to allow empty datasets.
+            raise RuntimeError(
+                f'The requested dataset {dataset_name!r} is empty. '
+            )
+
+        for example_id in examples.keys():
+            examples[example_id] = {
+                **examples[example_id],
+                'example_id': example_id,
+                'dataset': dataset_name,
+            }
+        return examples
 
     def get_dataset(self, name=None):
         """Return a single lazy dataset over specified datasets.
@@ -141,25 +173,7 @@ class Database:
         except KeyError:
             pass
 
-        try:
-            examples = self._get_dataset_examples_from_data(name)
-        except KeyError:
-            import difflib
-            similar = difflib.get_close_matches(
-                name, self.dataset_names, n=5, cutoff=0)
-            raise KeyError(name, f'close_matches: {similar}', self)
-
-        if len(examples) == 0:
-            # When somebody need empty datasets, add an option to this
-            # function to allow empty datasets.
-            raise RuntimeError(
-                f'The requested dataset {name!r} is empty. '
-            )
-
-        for example_id in examples.keys():
-            examples[example_id]['example_id'] = example_id
-            examples[example_id]['dataset'] = name
-
+        examples = self.get_examples(name)
         ds = lazy_dataset.from_dict(examples)
 
         self._dataset_weak_ref_dict[name] = ds
