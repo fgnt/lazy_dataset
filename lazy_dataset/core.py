@@ -234,7 +234,7 @@ def key_zip(*datasets):
         raise ValueError('Need at least one dataset to concatenate!')
     if len(datasets) == 1 and isinstance(datasets[0], (tuple, list)):
         datasets, = datasets
-    if not all(isinstance(dataset, Dataset) for dataset in datasets):
+    if not all([isinstance(dataset, Dataset) for dataset in datasets]):
         raise TypeError(
             f'All input arguments must be datasets! {Dataset} ' + ' '.join(
                 str(type(d)) for d in datasets) + '|' + ' '.join(
