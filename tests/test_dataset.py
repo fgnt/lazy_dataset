@@ -210,6 +210,32 @@ def test_zip():
 
     assert ds_zip[0] == (
         {'observation': [1, 2, 3], 'label': 1, 'example_id': 'example_id_1'},
+        {'observation': [7, 8, 9], 'label': 3, 'example_id': 'example_id_3'},
+    )
+    assert ds_shuffled_zip[0] == (
+        {'observation': [7, 8, 9], 'label': 3, 'example_id': 'example_id_3'},
+        {'observation': [1, 2, 3], 'label': 1, 'example_id': 'example_id_1'},
+    )
+
+
+def test_key_zip():
+    import numpy as np
+    ds = get_dataset()
+
+    # Change the key order
+    np.random.seed(2)
+    ds_shuffled = ds.shuffle(reshuffle=False)
+
+    example_ids = [e['example_id'] for e in ds]
+    assert example_ids == ['example_id_1', 'example_id_2', 'example_id_3']
+    example_ids = [e['example_id'] for e in ds_shuffled]
+    assert example_ids == ['example_id_3', 'example_id_2', 'example_id_1']
+
+    ds_zip = ds.key_zip(ds_shuffled)
+    ds_shuffled_zip = ds_shuffled.key_zip(ds)
+
+    assert ds_zip[0] == (
+        {'observation': [1, 2, 3], 'label': 1, 'example_id': 'example_id_1'},
         {'observation': [1, 2, 3], 'label': 1, 'example_id': 'example_id_1'},
     )
     assert ds_shuffled_zip[0] == (
