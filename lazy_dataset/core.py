@@ -124,6 +124,9 @@ def concatenate(*datasets):
           MapDataset(_pickle.loads)
         ConcatenateDataset()
 
+        >>> list(concatenate((ds1, ds2)))
+        [1, 2, 3, 4, 5, 6, 7, 8]
+
     Args:
         datasets: List of datasets. Can be either a list of datasets
             (`concatenate((ds1, ds2, ...))`) or multiple datasets
@@ -145,6 +148,98 @@ def concatenate(*datasets):
     if len(datasets) == 1:
         return datasets[0]
     return ConcatenateDataset(*datasets)
+
+
+def _zip(*datasets):
+    """
+    Create a new `Dataset` zipping all passed datasets.
+
+    Example:
+        >>> import lazy_dataset
+        >>> ds1 = lazy_dataset.new({'1': 1, '2': 2, '3': 3, '4': 4})
+        >>> ds2 = lazy_dataset.new({'1': 5, '2': 6, '3': 7, '4': 8})
+        >>> _zip(ds1, ds2)
+            DictDataset(len=4)
+          MapDataset(_pickle.loads)
+            DictDataset(len=4)
+          MapDataset(_pickle.loads)
+        ZipDataset()
+
+        >>> _zip((ds1, ds2))
+            DictDataset(len=4)
+          MapDataset(_pickle.loads)
+            DictDataset(len=4)
+          MapDataset(_pickle.loads)
+        ZipDataset()
+
+        >>> list(_zip(ds1, ds2))
+        [(1, 5), (2, 6), (3, 7), (4, 8)]
+
+    Args:
+        datasets: List of datasets. Can be either a list of datasets
+            (`zip_((ds1, ds2, ...))`) or multiple datasets
+            (`zip_(ds1, ds2, ...)`)
+
+    Returns:
+        zip of all input datasets
+
+    """
+    if len(datasets) == 0:
+        raise ValueError('Need at least one dataset to concatenate!')
+    if len(datasets) == 1 and isinstance(datasets[0], (tuple, list)):
+        datasets, = datasets
+    if not all(isinstance(dataset, Dataset) for dataset in datasets):
+        raise TypeError(
+            f'All input arguments must be datasets! {Dataset} ' + ' '.join(
+                str(type(d)) for d in datasets) + '|' + ' '.join(
+                str(isinstance(d, Dataset)) for d in datasets))
+    return ZipDataset(*datasets)
+
+
+def key_zip(*datasets):
+    """
+    Create a new `Dataset` zipping all passed datasets.
+
+    Example:
+        >>> import lazy_dataset
+        >>> ds1 = lazy_dataset.new({'1': 1, '2': 2, '3': 3, '4': 4})
+        >>> ds2 = lazy_dataset.new({'1': 5, '2': 6, '3': 7, '4': 8})
+        >>> key_zip(ds1, ds2)
+            DictDataset(len=4)
+          MapDataset(_pickle.loads)
+            DictDataset(len=4)
+          MapDataset(_pickle.loads)
+        KeyZipDataset()
+
+        >>> key_zip((ds1, ds2))
+            DictDataset(len=4)
+          MapDataset(_pickle.loads)
+            DictDataset(len=4)
+          MapDataset(_pickle.loads)
+        KeyZipDataset()
+
+        >>> list(key_zip(ds1, ds2))
+        [(1, 5), (2, 6), (3, 7), (4, 8)]
+
+    Args:
+        datasets: List of datasets. Can be either a list of datasets
+            (`zip_((ds1, ds2, ...))`) or multiple datasets
+            (`zip_(ds1, ds2, ...)`)
+
+    Returns:
+        zip of all input datasets
+
+    """
+    if len(datasets) == 0:
+        raise ValueError('Need at least one dataset to concatenate!')
+    if len(datasets) == 1 and isinstance(datasets[0], (tuple, list)):
+        datasets, = datasets
+    if not all(isinstance(dataset, Dataset) for dataset in datasets):
+        raise TypeError(
+            f'All input arguments must be datasets! {Dataset} ' + ' '.join(
+                str(type(d)) for d in datasets) + '|' + ' '.join(
+                str(isinstance(d, Dataset)) for d in datasets))
+    return KeyZipDataset(*datasets)
 
 
 class FilterException(Exception):
@@ -234,7 +329,7 @@ class Dataset:
             [('a', {'d': 1}), ('b', {'e': 1}), ('c', {'f': 1})]
         """
         it = DictDataset(dict(zip(self.keys(), self.keys())))
-        return it.zip(self)
+        return it.key_zip(self)
 
     def __contains__(self, item):
         # contains is not well defined for dataset, because dataset is a
@@ -465,11 +560,9 @@ class Dataset:
         """
         Creates a `Dataset` by zipping together the given datasets.
 
-        This method has two major differences to the built-in `zip()` function
-        in Python. First, the zipping happen based on the keys of the
-        first dataset (i.e. The first defines the order).
-        Second, it assumes that all datasets have the same length and keys.
-        (Could be removed, when someone needs it.)
+        This method works similar to the python buildin zip except that it
+        does not support a short zip, i.e. it asserts that all datasets have
+        the same length.
 
         This function is usually followed by a map call to merge the tuple of
         dicts to a single dict.
@@ -495,11 +588,11 @@ class Dataset:
             >>> ds4  # doctest: +ELLIPSIS
                     DictDataset(len=2)
                     DictDataset(len=2)
-                  ZipDataset()
+                  KeyZipDataset()
                 MapDataset(<function <lambda> at ...>)
                     DictDataset(len=2)
                     DictDataset(len=2)
-                  ZipDataset()
+                  KeyZipDataset()
                 MapDataset(<function <lambda> at ...>)
               ZipDataset()
             MapDataset(<function <lambda> at ...>)
@@ -514,6 +607,60 @@ class Dataset:
             {'example_id': 'b', 'z': 3, 'y': 'd'}
         """
         return ZipDataset(self, *others)
+
+    def key_zip(self, *others) -> 'ZipDataset':
+        """
+        Creates a `Dataset` by zipping together the given datasets based on its
+        keys.
+
+        This method has two major differences to the built-in `zip()` function
+        in Python. First, the zipping happens based on the keys of the
+        first dataset (i.e. The first defines the order).
+        Second, it assumes that all datasets have the same length and keys.
+
+        This function is usually followed by a map call to merge the tuple of
+        dicts to a single dict.
+
+        Args:
+            *others: list of other datasets to be zipped
+
+        Returns:
+            KeyZipDataset
+
+        Example:
+            >>> ds1 = DictDataset({'a': {'z': 1}, 'b': {'z': 2}})
+            >>> ds1 = ds1.items().map(lambda x: {'example_id': x[0], **x[1]})
+            >>> ds2 = DictDataset({'a': {'y': 'c'}, 'b': {'y': 'd', 'z': 3}})
+            >>> ds2 = ds2.items().map(lambda x: {'example_id': x[0], **x[1]})
+            >>> ds3 = ds1.key_zip(ds2)
+            >>> for e in ds3: print(e)
+            ({'example_id': 'a', 'z': 1}, {'example_id': 'a', 'y': 'c'})
+            ({'example_id': 'b', 'z': 2}, {'example_id': 'b', 'y': 'd', 'z': 3})
+
+            # Merge the dicts, when conflict, prefer the second
+            >>> ds4 = ds3.map(lambda example: {**example[0], **example[1]})
+            >>> ds4  # doctest: +ELLIPSIS
+                    DictDataset(len=2)
+                    DictDataset(len=2)
+                  KeyZipDataset()
+                MapDataset(<function <lambda> at ...>)
+                    DictDataset(len=2)
+                    DictDataset(len=2)
+                  KeyZipDataset()
+                MapDataset(<function <lambda> at ...>)
+              KeyZipDataset()
+            MapDataset(<function <lambda> at ...>)
+            >>> for e in ds4: print(e)
+            {'example_id': 'a', 'z': 1, 'y': 'c'}
+            {'example_id': 'b', 'z': 3, 'y': 'd'}
+
+            # Lambda that merges an arbitary amount of dicts.
+            >>> ds5 = ds3.map(lambda example: dict(sum([list(e.items()) for e in example], [])))
+            >>> for e in ds5: print(e)
+            {'example_id': 'a', 'z': 1, 'y': 'c'}
+            {'example_id': 'b', 'z': 3, 'y': 'd'}
+        """
+        return KeyZipDataset(self, *others)
 
     def shuffle(self, reshuffle: bool = False,
                 rng: Optional[np.random.RandomState] = None,
@@ -552,7 +699,7 @@ class Dataset:
             >>> it  # doctest: +ELLIPSIS
                   DictDataset(len=3)
                   DictDataset(len=3)
-                ZipDataset()
+                KeyZipDataset()
               MapDataset(<function <lambda> at ...>)
             SliceDataset([0 2 1])
             >>> list(it)
@@ -1704,20 +1851,66 @@ class ZipDataset(Dataset):
         assert len(self.input_datasets) >= 1, (f'You have to provide at least '
                                                f'one dataset.'
                                                f'\n{self.input_datasets}')
+        lengths = [len(ds) for ds in input_datasets]
+        assert len(set(lengths)) == 1, lengths
+
+    def copy(self, freeze=False):
+        return self.__class__(
+            *[ds.copy(freeze=freeze) for ds in self.input_datasets]
+        )
+
+    @property
+    def indexable(self):
+        return all([dataset.indexable for dataset in self.input_datasets])
+
+    def __iter__(self):
+        for examples in zip(*self.input_datasets):
+            yield examples
+
+    def __len__(self):
+        return len(self.input_datasets[0])
+
+    def __getitem__(self, item):
+        if isinstance(item, numbers.Integral):
+            return tuple([
+                ds[item] for ds in self.input_datasets
+            ])
+        else:
+            return super().__getitem__(item)
+
+
+class KeyZipDataset(Dataset):
+    """
+    While ZipDataset combines examples from multiple datasets index wise this
+    Datasets combines examples key wise, i.e. input_datasets are expected to
+    have the same keys.
+    """
+
+    def __init__(self, *input_datasets):
+        """
+
+        Args:
+            *input_datasets: list of datasets
+
+        """
+        self.input_datasets = input_datasets
+        assert len(self.input_datasets) >= 1, (f'You have to provide at least '
+                                               f'one dataset.'
+                                               f'\n{self.input_datasets}')
         assert len(self.input_datasets) >= 2, (f'Currently limited to at least '
                                                f'two dataset. Could be removed.'
                                                f'\n{self.input_datasets}')
-        keys = set(self.input_datasets[0].keys())
+        keys = set.union(*[set(ds.keys()) for ds in self.input_datasets])
         lengths = [
-            len(keys - set(it.keys())) for it in self.input_datasets
+            len(keys - set(ds.keys())) for ds in self.input_datasets
         ]
         if set(lengths) != {0}:
             missing_keys = [
-                keys - set(it.keys()) for it in self.input_datasets
+                keys - set(ds.keys()) for ds in self.input_datasets
             ]
             raise AssertionError(
-                f'Expect that all input_datasets have at least the same keys '
-                f'as the first. To many keys: '
+                f'Expect that all input_datasets have the same keys. '
+                f'Missing keys: '
                 f'{missing_keys}\n{self.input_datasets}'
             )
 
@@ -1752,8 +1945,8 @@ class ZipDataset(Dataset):
             item = self.keys()[item]
         if isinstance(item, str):
             return tuple([
-                it[item]
-                for it in self.input_datasets
+                ds[item]
+                for ds in self.input_datasets
             ])
         else:
             return super().__getitem__(item)
