@@ -140,7 +140,7 @@ def concatenate(*datasets):
         raise ValueError('Need at least one dataset to concatenate!')
     if len(datasets) == 1 and isinstance(datasets[0], (tuple, list)):
         datasets, = datasets
-    if not all(isinstance(dataset, Dataset) for dataset in datasets):
+    if not all([isinstance(dataset, Dataset) for dataset in datasets]):
         raise TypeError(
             f'All input arguments must be datasets! {Dataset} ' + ' '.join(
                 str(type(d)) for d in datasets) + '|' + ' '.join(
@@ -158,21 +158,21 @@ def _zip(*datasets):
         >>> import lazy_dataset
         >>> ds1 = lazy_dataset.new({'1': 1, '2': 2, '3': 3, '4': 4})
         >>> ds2 = lazy_dataset.new({'1': 5, '2': 6, '3': 7, '4': 8})
-        >>> _zip(ds1, ds2)
+        >>> lazy_dataset.zip(ds1, ds2)
             DictDataset(len=4)
           MapDataset(_pickle.loads)
             DictDataset(len=4)
           MapDataset(_pickle.loads)
         ZipDataset()
 
-        >>> _zip((ds1, ds2))
+        >>> lazy_dataset.zip((ds1, ds2))
             DictDataset(len=4)
           MapDataset(_pickle.loads)
             DictDataset(len=4)
           MapDataset(_pickle.loads)
         ZipDataset()
 
-        >>> list(_zip(ds1, ds2))
+        >>> list(lazy_dataset.zip(ds1, ds2))
         [(1, 5), (2, 6), (3, 7), (4, 8)]
 
     Args:
@@ -188,7 +188,7 @@ def _zip(*datasets):
         raise ValueError('Need at least one dataset to concatenate!')
     if len(datasets) == 1 and isinstance(datasets[0], (tuple, list)):
         datasets, = datasets
-    if not all(isinstance(dataset, Dataset) for dataset in datasets):
+    if not all([isinstance(dataset, Dataset) for dataset in datasets]):
         raise TypeError(
             f'All input arguments must be datasets! {Dataset} ' + ' '.join(
                 str(type(d)) for d in datasets) + '|' + ' '.join(
