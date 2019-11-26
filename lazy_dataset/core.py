@@ -910,6 +910,15 @@ class Dataset:
 
         Returns:
             Dataset of batches (lists of elements)
+
+        Example:
+            >>> examples = {'a': {'x': 1}, 'b': {'x': 3},  'c': {'x': 12}}
+            >>> ds = DictDataset(examples)#.shuffle(reshuffle=True)
+            >>> ds = ds.batch(2)
+            >>> for ex in ds:
+            ...     print(ex)
+            [{'x': 1}, {'x': 3}]
+            [{'x': 12}]
         """
         return BatchDataset(self, batch_size, drop_last)
 
