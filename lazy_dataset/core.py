@@ -45,7 +45,7 @@ def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
         >>> ds = ds.filter(lambda example: example > 2)
         >>> list(ds)
         [4, 6]
-        >>> ds
+        >>> ds  # doctest: +ELLIPSIS
               DictDataset(len=3)
             MapDataset(_pickle.loads)
           MapDataset(<function <lambda> at ...>)
@@ -59,12 +59,12 @@ def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
 
     """
     if isinstance(examples, dict):
-        ds = from_dict(examples, immutable_warranty=immutable_warranty)
+        dataset = from_dict(examples, immutable_warranty=immutable_warranty)
     elif isinstance(examples, (tuple, list)):
-        ds = from_list(examples, immutable_warranty=immutable_warranty)
+        dataset = from_list(examples, immutable_warranty=immutable_warranty)
     else:
         raise TypeError(type(examples), examples)
-    return ds
+    return dataset
 
 
 def from_dict(examples: dict, immutable_warranty: str = 'pickle'):
@@ -73,15 +73,15 @@ def from_dict(examples: dict, immutable_warranty: str = 'pickle'):
             k: pickle.dumps(v)
             for k, v in examples.items()
         }
-        ds = DictDataset(examples)
-        ds = ds.map(pickle.loads)
+        dataset = DictDataset(examples)
+        dataset = dataset.map(pickle.loads)
     elif immutable_warranty == 'copy':
-        ds = DictDataset(examples)
-        ds = ds.map(deepcopy)
+        dataset = DictDataset(examples)
+        dataset = dataset.map(deepcopy)
     else:
         raise ValueError(immutable_warranty)
 
-    return ds
+    return dataset
 
 
 def from_list(examples: list, immutable_warranty: str = 'pickle'):
@@ -91,15 +91,15 @@ def from_list(examples: list, immutable_warranty: str = 'pickle'):
             pickle.dumps(example)
             for example in examples
         ]
-        ds = ListDataset(examples)
-        ds = ds.map(pickle.loads)
+        dataset = ListDataset(examples)
+        dataset = dataset.map(pickle.loads)
     elif immutable_warranty == 'copy':
-        ds = ListDataset(examples)
-        ds = ds.map(deepcopy)
+        dataset = ListDataset(examples)
+        dataset = dataset.map(deepcopy)
     else:
         raise ValueError(immutable_warranty)
 
-    return ds
+    return dataset
 
 
 def concatenate(*datasets):
@@ -110,21 +110,21 @@ def concatenate(*datasets):
         >>> import lazy_dataset
         >>> ds1 = lazy_dataset.new([1, 2, 3, 4])
         >>> ds2 = lazy_dataset.new([5, 6, 7, 8])
-        >>> concatenate(ds1, ds2)
+        >>> lazy_dataset.concatenate(ds1, ds2)
             ListDataset(len=4)
           MapDataset(_pickle.loads)
             ListDataset(len=4)
           MapDataset(_pickle.loads)
         ConcatenateDataset()
 
-        >>> concatenate((ds1, ds2))
+        >>> lazy_dataset.concatenate((ds1, ds2))
             ListDataset(len=4)
           MapDataset(_pickle.loads)
             ListDataset(len=4)
           MapDataset(_pickle.loads)
         ConcatenateDataset()
 
-        >>> list(concatenate((ds1, ds2)))
+        >>> list(lazy_dataset.concatenate((ds1, ds2)))
         [1, 2, 3, 4, 5, 6, 7, 8]
 
     Args:
@@ -322,14 +322,14 @@ class Dataset:
 
         Example:
             >>> examples = {'a': {'d': 1}, 'b': {'e': 1}, 'c': {'f': 1}}
-            >>> it = DictDataset(examples)
-            >>> list(it)
+            >>> ds = DictDataset(examples)
+            >>> list(ds)
             [{'d': 1}, {'e': 1}, {'f': 1}]
-            >>> list(it.items())
+            >>> list(ds.items())
             [('a', {'d': 1}), ('b', {'e': 1}), ('c', {'f': 1})]
         """
-        it = DictDataset(dict(zip(self.keys(), self.keys())))
-        return it.key_zip(self)
+        dataset = DictDataset(dict(zip(self.keys(), self.keys())))
+        return dataset.key_zip(self)
 
     def __contains__(self, item):
         # contains is not well defined for dataset, because dataset is a
@@ -431,15 +431,15 @@ class Dataset:
         Example:
             >>> import string
             >>> ascii = string.ascii_lowercase
-            >>> it = DictDataset({k: v for v, k in enumerate(ascii[:10])})
+            >>> ds = DictDataset({k: v for v, k in enumerate(ascii[:10])})
             >>> # ds1 = ds1.items().map(lambda x: {'example_id': x[0], **x[1]})
-            >>> list(it)
+            >>> list(ds)
             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             >>> def foo(ex):
             ...     print(f'called with {ex}')
             ...     return ex
-            >>> it = it.map(foo)
-            >>> list(it)
+            >>> ds = ds.map(foo)
+            >>> list(ds)
             called with 0
             called with 1
             called with 2
@@ -451,8 +451,8 @@ class Dataset:
             called with 8
             called with 9
             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-            >>> it = it.prefetch(2, 4)
-            >>> next(iter(it))
+            >>> ds = ds.prefetch(2, 4)
+            >>> next(iter(ds))
             called with 0
             called with 1
             called with 2
@@ -693,18 +693,18 @@ class Dataset:
         Example:
             >>> np.random.seed(1)
             >>> examples = {'a': {}, 'b': {}, 'c': {}}
-            >>> it = DictDataset(examples)
-            >>> it = it.items().map(lambda x: {'example_id': x[0], **x[1]})
-            >>> it = it.shuffle(False)
-            >>> it  # doctest: +ELLIPSIS
+            >>> ds = DictDataset(examples)
+            >>> ds = ds.items().map(lambda x: {'example_id': x[0], **x[1]})
+            >>> ds = ds.shuffle(False)
+            >>> ds  # doctest: +ELLIPSIS
                   DictDataset(len=3)
                   DictDataset(len=3)
                 KeyZipDataset()
               MapDataset(<function <lambda> at ...>)
             SliceDataset([0 2 1])
-            >>> list(it)
+            >>> list(ds)
             [{'example_id': 'a'}, {'example_id': 'c'}, {'example_id': 'b'}]
-            >>> it.keys()
+            >>> ds.keys()
             ('a', 'c', 'b')
         """
         # TODO: Should reshuffle default be True or False
@@ -739,8 +739,8 @@ class Dataset:
         datasets = [self] * reps
         if shuffle:
             datasets = [
-                it.shuffle()
-                for it in datasets
+                ds.shuffle()
+                for ds in datasets
             ]
         return self.__class__.concatenate(*datasets)
 
@@ -768,8 +768,8 @@ class Dataset:
         Example:
             >>> from IPython.lib.pretty import pprint
             >>> examples = {'a': {'z': 1}, 'b': {'z': 2}, 'c': {'z': 1}, 'd': {'z': 1}, 'e': {'z': 3}}
-            >>> it = DictDataset(examples)
-            >>> for k, v in it.groupby(lambda ex: ex['z']).items():
+            >>> ds = DictDataset(examples)
+            >>> for k, v in ds.groupby(lambda ex: ex['z']).items():
             ...     print(f'{k}:', list(v), v.keys())
             ...     print(f'{v!r}')
             1: [{'z': 1}, {'z': 1}, {'z': 1}] ('a', 'c', 'd')
@@ -802,14 +802,14 @@ class Dataset:
 
         Example:
             >>> examples = {'a': {}, 'b': {}, 'c': {}, 'd': {}, 'e': {}}
-            >>> it = DictDataset(examples)
-            >>> it = it.items().map(lambda x: {'example_id': x[0], **x[1]})
-            >>> its = it.split(2)
-            >>> list(its[0])
+            >>> ds = DictDataset(examples)
+            >>> ds = ds.items().map(lambda x: {'example_id': x[0], **x[1]})
+            >>> datasets = ds.split(2)
+            >>> list(datasets[0])
             [{'example_id': 'a'}, {'example_id': 'b'}, {'example_id': 'c'}]
-            >>> list(its[1])
+            >>> list(datasets[1])
             [{'example_id': 'd'}, {'example_id': 'e'}]
-            >>> its[1].keys()
+            >>> datasets[1].keys()
             ('d', 'e')
         """
         if sections < 1:
@@ -829,7 +829,7 @@ class Dataset:
         Sorts the dataset. The sort key is extracted from each example with
         the `key_fn`. The `sort_fn` allows to influence the sorting,
         e.g. `natsort.natsorted`.
-        When the `key_fn` is `None`, the returned iterator is sorted according
+        When the `key_fn` is `None`, the returned dataset is sorted according
         to `sort_fn(self.keys())`.
 
         Args:
@@ -846,25 +846,25 @@ class Dataset:
 
         Example:
             >>> examples = {'a': {'x': 1}, 'b': {'x': 3},  'c': {'x': 12}, 'd': {'x': 2}}
-            >>> it = DictDataset(examples)
+            >>> ds = DictDataset(examples)
 
             Sort by value
-            >>> it_sorted = it.sort(lambda ex: ex['x'])
-            >>> it_sorted
+            >>> ds_sorted = ds.sort(lambda ex: ex['x'])
+            >>> ds_sorted
               DictDataset(len=4)
             SliceDataset([0, 3, 1, 2])
-            >>> print(it_sorted.slice)
+            >>> print(ds_sorted.slice)
             [0 3 1 2]
-            >>> dict(it_sorted)
+            >>> dict(ds_sorted)
             {'a': {'x': 1}, 'd': {'x': 2}, 'b': {'x': 3}, 'c': {'x': 12}}
 
             Sort reversed by value
-            >>> it_sorted = it.sort(lambda ex: ex['x'], reverse=True)
-            >>> dict(it_sorted)
+            >>> ds_sorted = ds.sort(lambda ex: ex['x'], reverse=True)
+            >>> dict(ds_sorted)
             {'c': {'x': 12}, 'b': {'x': 3}, 'd': {'x': 2}, 'a': {'x': 1}}
 
             Sort by example key
-            >>> dict(it_sorted.sort())
+            >>> dict(ds_sorted.sort())
             {'a': {'x': 1}, 'b': {'x': 3}, 'c': {'x': 12}, 'd': {'x': 2}}
         """
         if key_fn is None:
@@ -1004,10 +1004,10 @@ class Dataset:
 
         Example:
             >>> examples = {'a': [1, 2], 'b': [3, 4]}
-            >>> it = DictDataset(examples)
-            >>> list(it)
+            >>> ds = DictDataset(examples)
+            >>> list(ds)
             [[1, 2], [3, 4]]
-            >>> list(it.unbatch())
+            >>> list(ds.unbatch())
             [1, 2, 3, 4]
         """
         return UnbatchDataset(self)
@@ -1054,23 +1054,23 @@ class Dataset:
         Example:
             >>> rng_state = np.random.RandomState(0)
             >>> examples = {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
-            >>> it = DictDataset(examples)
+            >>> ds = DictDataset(examples)
             >>> def foo(ex):
             ...     print('foo')
             ...     return ex
-            >>> it = it.map(foo)
-            >>> print('Number', it.random_choice(rng_state=rng_state))
+            >>> ds = ds.map(foo)
+            >>> print('Number', ds.random_choice(rng_state=rng_state))
             foo
             Number 3
 
-            >>> print(it.random_choice(1, rng_state=rng_state))
+            >>> print(ds.random_choice(1, rng_state=rng_state))
             SliceDataset([0])
-            >>> print(it.random_choice(2, rng_state=rng_state))
+            >>> print(ds.random_choice(2, rng_state=rng_state))
             SliceDataset([1 3])
-            >>> it_choice = it.random_choice(7, rng_state=rng_state, replace=True)
-            >>> print(it_choice)
+            >>> ds_choice = ds.random_choice(7, rng_state=rng_state, replace=True)
+            >>> print(ds_choice)
             SliceDataset([0 4 2 1 0 1 1])
-            >>> print(list(it_choice))
+            >>> print(list(ds_choice))
             foo
             foo
             foo
@@ -1091,7 +1091,7 @@ class Dataset:
 
         Args:
             apply_fn: For now, it is a single function, e.g.,
-                `lambda it: it.shard(num_shards, shard_index)` but can
+                `lambda ds: ds.shard(num_shards, shard_index)` but can
                 potentially be a list in future implementations.
 
         Returns:
@@ -1295,21 +1295,21 @@ class ParMapDataset(MapDataset):
 
 class CatchExceptionDataset(Dataset):
     """
-    >>> it = DictDataset({'a': 1, 'b': 2, 'c': 3})
-    >>> list(it)
+    >>> ds = DictDataset({'a': 1, 'b': 2, 'c': 3})
+    >>> list(ds)
     [1, 2, 3]
     >>> def foo(integer):
     ...     if integer == 2:
     ...         raise FilterException('Exception msg')
     ...     else:
     ...         return integer
-    >>> list(it.map(foo))
+    >>> list(ds.map(foo))
     Traceback (most recent call last):
     ...
     core.FilterException: Exception msg
-    >>> list(it.map(foo).catch())
+    >>> list(ds.map(foo).catch())
     [1, 3]
-    >>> it.map(foo).catch()[0]  # doctest: +ELLIPSIS
+    >>> ds.map(foo).catch()[0]  # doctest: +ELLIPSIS
     Traceback (most recent call last):
     ...
     NotImplementedError: __getitem__ is not well defined for <class 'core.CatchExceptionDataset'>[0],
@@ -1758,13 +1758,13 @@ class ConcatenateDataset(Dataset):
     def keys(self):
         """
         >>> examples = {'a': 1, 'b': 2, 'c': 3}
-        >>> it = DictDataset(examples)
-        >>> it.concatenate(it).keys()
+        >>> ds = DictDataset(examples)
+        >>> ds.concatenate(ds).keys()
         Traceback (most recent call last):
         ...
         AssertionError: Keys are not unique. There are 3 duplicates.
         ['a', 'b', 'c']
-        >>> list(it.concatenate(it.map(lambda x: x+10)))
+        >>> list(ds.concatenate(ds.map(lambda x: x+10)))
         [1, 2, 3, 11, 12, 13]
         """
         if self._keys is None:
@@ -1794,14 +1794,14 @@ class ConcatenateDataset(Dataset):
 
     def __getitem__(self, item):
         """
-        >>> it1 = DictDataset({'a': {}, 'b': {}})
-        >>> it1 = it1.items().map(lambda x: {'example_id': x[0], **x[1]})
-        >>> it2 = DictDataset({'c': {}, 'd': {}})
-        >>> it2 = it2.items().map(lambda x: {'example_id': x[0], **x[1]})
-        >>> it = it1.concatenate(it2)
-        >>> it['a']
+        >>> ds1 = DictDataset({'a': {}, 'b': {}})
+        >>> ds1 = ds1.items().map(lambda x: {'example_id': x[0], **x[1]})
+        >>> ds2 = DictDataset({'c': {}, 'd': {}})
+        >>> ds2 = ds2.items().map(lambda x: {'example_id': x[0], **x[1]})
+        >>> ds = ds1.concatenate(ds2)
+        >>> ds['a']
         {'example_id': 'a'}
-        >>> it['c']
+        >>> ds['c']
         {'example_id': 'c'}
         """
         if isinstance(item, numbers.Integral):
@@ -1926,8 +1926,8 @@ class KeyZipDataset(Dataset):
     def __iter__(self):
         for key in self.keys():
             yield tuple([
-                it[key]
-                for it in self.input_datasets
+                ds[key]
+                for ds in self.input_datasets
             ])
 
     def __len__(self):
@@ -1957,32 +1957,32 @@ class BatchDataset(Dataset):
 
     >>> import string
     >>> examples = {c: i for i, c in enumerate(string.ascii_letters[:7])}
-    >>> it = DictDataset(examples)
-    >>> it = it.batch(3)
-    >>> it
+    >>> ds = DictDataset(examples)
+    >>> ds = ds.batch(3)
+    >>> ds
       DictDataset(len=7)
     BatchDataset(batch_size=3)
-    >>> list(it), len(it)
+    >>> list(ds), len(ds)
     ([[0, 1, 2], [3, 4, 5], [6]], 3)
-    >>> it[2], it[-1]
+    >>> ds[2], ds[-1]
     ([6], [6])
-    >>> it[3]
+    >>> ds[3]
     Traceback (most recent call last):
     ...
     IndexError: tuple index out of range
-    >>> it = DictDataset(examples)
-    >>> it = it.batch(3, drop_last=True)
-    >>> list(it), len(it)
+    >>> ds = DictDataset(examples)
+    >>> ds = ds.batch(3, drop_last=True)
+    >>> list(ds), len(ds)
     ([[0, 1, 2], [3, 4, 5]], 2)
-    >>> it[-1]
+    >>> ds[-1]
     [3, 4, 5]
-    >>> it = DictDataset(examples)[:6]
-    >>> it = it.batch(3)
-    >>> list(it), len(it)
+    >>> ds = DictDataset(examples)[:6]
+    >>> ds = ds.batch(3)
+    >>> list(ds), len(ds)
     ([[0, 1, 2], [3, 4, 5]], 2)
-    >>> it[1]
+    >>> ds[1]
     [3, 4, 5]
-    >>> it['abc']
+    >>> ds['abc']
     Traceback (most recent call last):
     ...
     NotImplementedError: __getitem__ is not implemented for <class 'core.BatchDataset'>['abc'],
