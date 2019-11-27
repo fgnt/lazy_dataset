@@ -420,7 +420,7 @@ class Dataset:
                 and the element that raised the exception while processing is
                 dropped. This can also be set to a specific type (or a list of
                 types) of exceptions to catch. If this is set to a value that
-                evaluates to `True`, the resulting iterator does not have a
+                evaluates to `True`, the resulting dataset does not have a
                 length.
 
         Returns:
