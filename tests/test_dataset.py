@@ -83,8 +83,8 @@ def test_map():
         d['example_id'] = d['example_id'].upper()
         return d
 
-    iterator = ds.map(map_fn)
-    example_ids = [e['example_id'] for e in iterator]
+    ds = ds.map(map_fn)
+    example_ids = [e['example_id'] for e in ds]
     assert example_ids == 'EXAMPLE_ID_1 EXAMPLE_ID_2 EXAMPLE_ID_3'.split()
 
     # Getitem should still be supported
@@ -97,8 +97,8 @@ def test_filter():
     def filter_fn(d):
         return not d['example_id'] == 'example_id_2'
 
-    iterator = ds.filter(filter_fn)
-    example_ids = [e['example_id'] for e in iterator]
+    ds = ds.filter(filter_fn)
+    example_ids = [e['example_id'] for e in ds]
     assert example_ids == 'example_id_1 example_id_3'.split()
 
     # Getitem with str should be supported
@@ -106,13 +106,13 @@ def test_filter():
 
     # Getitem with filtered str should fail
     with pytest.raises(IndexError):
-        _ = iterator['example_id_2']
+        _ = ds['example_id_2']
 
     # Getitem with int is not supported
     with pytest.raises(AssertionError):
-        _ = iterator[0]
+        _ = ds[0]
     with pytest.raises(AssertionError):
-        _ = iterator[:1]
+        _ = ds[:1]
 
 
 def test_concatenate_function():
