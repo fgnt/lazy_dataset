@@ -7,18 +7,21 @@ Package a Python Package/ version bump See: https://packaging.python.org/tutoria
 2. Commit this change
 3. Tag and upload
 
+## Install dependencies:
 ```bash
-git clone git@github.com:fgnt/lazy_dataset.git lazy_dataset_pypi_version
-cd lazy_dataset_pypi_version
 pip install --upgrade setuptools
 pip install --upgrade wheel
 pip install --upgrade twine
 # pip install --upgrade bleach html5lib  # some versions do not work
-git tag # Lists existing tags
-git tag -a 0.0.1 -m "Pypi version update"
-git tag # Lists existing tags
-git push origin --tags
+pip install --upgrade bump2version
+```
+
+`bump2version` takes care to increase the version number, create the commit and tag.
+
+```bash
+bump2version --verbose --tag patch  # major, minor or patch
 python setup.py sdist bdist_wheel
+git push origin --tags
 twine upload --repository-url https://test.pypi.org/legacy/ dist/*
 twine upload dist/*
 ```
