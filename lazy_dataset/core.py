@@ -14,7 +14,11 @@ from typing import Optional, Union, Any, List, Dict
 LOG = logging.getLogger('lazy_dataset')
 
 
-def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
+def new(
+        examples: Union[list, dict],
+        immutable_warranty: str = 'pickle',
+        name: str = None,
+):
     """
     Creates a new dataset from data in `examples`. `examples` can be a `list`
     or a `dict`.
@@ -23,6 +27,7 @@ def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
         examples: The data to create a new dataset from
         immutable_warranty: How to ensure immutability. Available options are
             'pickle' and 'copy'.
+        name: An optional name for the dataset. Only effects the representer.
 
     Returns:
         The `Dataset` created from `examples`
@@ -31,9 +36,9 @@ def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
         Create a dataset from a dict:
 
         >>> import lazy_dataset
-        >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3})
+        >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3}, name='MyDataset')
         >>> ds
-          DictDataset(len=3)
+          DictDataset(name=MyDataset, len=3)
         MapDataset(_pickle.loads)
         >>> ds.keys()
         ('a', 'b', 'c')
@@ -46,7 +51,7 @@ def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
         >>> list(ds)
         [4, 6]
         >>> ds  # doctest: +ELLIPSIS
-              DictDataset(len=3)
+              DictDataset(name=MyDataset, len=3)
             MapDataset(_pickle.loads)
           MapDataset(<function <lambda> at ...>)
         FilterDataset(<function <lambda> at ...>)
@@ -59,24 +64,30 @@ def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
 
     """
     if isinstance(examples, dict):
-        dataset = from_dict(examples, immutable_warranty=immutable_warranty)
+        dataset = from_dict(
+            examples, immutable_warranty=immutable_warranty, name=name)
     elif isinstance(examples, (tuple, list)):
-        dataset = from_list(examples, immutable_warranty=immutable_warranty)
+        dataset = from_list(
+            examples, immutable_warranty=immutable_warranty, name=name)
     else:
         raise TypeError(type(examples), examples)
     return dataset
 
 
-def from_dict(examples: dict, immutable_warranty: str = 'pickle'):
+def from_dict(
+        examples: dict,
+        immutable_warranty: str = 'pickle',
+        name: str = None,
+):
     if immutable_warranty == 'pickle':
         examples = {
             k: pickle.dumps(v)
             for k, v in examples.items()
         }
-        dataset = DictDataset(examples)
+        dataset = DictDataset(examples, name=name)
         dataset = dataset.map(pickle.loads)
     elif immutable_warranty == 'copy':
-        dataset = DictDataset(examples)
+        dataset = DictDataset(examples, name=name)
         dataset = dataset.map(deepcopy)
     else:
         raise ValueError(immutable_warranty)
@@ -84,17 +95,21 @@ def from_dict(examples: dict, immutable_warranty: str = 'pickle'):
     return dataset
 
 
-def from_list(examples: list, immutable_warranty: str = 'pickle'):
+def from_list(
+        examples: list,
+        immutable_warranty: str = 'pickle',
+        name: str = None,
+):
     assert isinstance(examples, (tuple, list)), examples
     if immutable_warranty == 'pickle':
         examples = [
             pickle.dumps(example)
             for example in examples
         ]
-        dataset = ListDataset(examples)
+        dataset = ListDataset(examples, name=name)
         dataset = dataset.map(pickle.loads)
     elif immutable_warranty == 'copy':
-        dataset = ListDataset(examples)
+        dataset = ListDataset(examples, name=name)
         dataset = dataset.map(deepcopy)
     else:
         raise ValueError(immutable_warranty)
