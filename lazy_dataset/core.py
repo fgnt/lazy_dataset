@@ -1503,13 +1503,17 @@ class ReShuffleDataset(Dataset):
     """
 
     def __init__(self, input_dataset, rng=np.random):
-        self.permutation = np.arange(len(input_dataset))
+        self._permutation = np.arange(len(input_dataset))
         self.input_dataset = input_dataset
         self.rng = rng
 
+    @property
+    def permutation(self):
+        self.rng.shuffle(self._permutation)
+        return self._permutation
+
     def copy(self, freeze=False):
         if freeze:
-            self.rng.shuffle(self.permutation)
             return self.input_dataset.copy(freeze=freeze)[self.permutation]
         else:
             return self.__class__(
@@ -1530,7 +1534,6 @@ class ReShuffleDataset(Dataset):
     #     return frozenset(self.input_dataset.keys())
 
     def __iter__(self):
-        np.random.shuffle(self.permutation)
         for idx in self.permutation:
             yield self.input_dataset[idx]
 
