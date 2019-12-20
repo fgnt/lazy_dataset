@@ -219,21 +219,21 @@ def key_zip(*datasets):
         >>> import lazy_dataset
         >>> ds1 = lazy_dataset.new({'1': 1, '2': 2, '3': 3, '4': 4})
         >>> ds2 = lazy_dataset.new({'1': 5, '2': 6, '3': 7, '4': 8})
-        >>> key_zip(ds1, ds2)
+        >>> lazy_dataset.key_zip(ds1, ds2)
             DictDataset(len=4)
           MapDataset(_pickle.loads)
             DictDataset(len=4)
           MapDataset(_pickle.loads)
         KeyZipDataset()
 
-        >>> key_zip((ds1, ds2))
+        >>> lazy_dataset.key_zip((ds1, ds2))
             DictDataset(len=4)
           MapDataset(_pickle.loads)
             DictDataset(len=4)
           MapDataset(_pickle.loads)
         KeyZipDataset()
 
-        >>> list(key_zip(ds1, ds2))
+        >>> list(lazy_dataset.key_zip(ds1, ds2))
         [(1, 5), (2, 6), (3, 7), (4, 8)]
 
     Args:
