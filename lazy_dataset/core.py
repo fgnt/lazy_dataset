@@ -781,7 +781,6 @@ class Dataset:
             elements that were mapped to the this group ID by `group_fn`
 
         Example:
-            >>> from IPython.lib.pretty import pprint
             >>> examples = {'a': {'z': 1}, 'b': {'z': 2}, 'c': {'z': 1}, 'd': {'z': 1}, 'e': {'z': 3}}
             >>> ds = DictDataset(examples)
             >>> for k, v in ds.groupby(lambda ex: ex['z']).items():
