@@ -210,6 +210,48 @@ class DatasetTest(unittest.TestCase):
     # def tearDown(self):
     #     shutil.rmtree(str(self.temp_directory))
 
+    def test_get_dataset_overwrite(self):
+        class FakeDictDatabase(DictDatabase):
+            def get_dataset(self, name=None):
+                return super().get_dataset(name).map(lambda x: (x, x))
+
+        self.fake_db = FakeDictDatabase(self.json)
+        fake_ds = self.fake_db.get_dataset(['train', 'test'])
+        ds = self.db.get_dataset(['train', 'test'])
+        example_ids = list()
+        for ex in fake_ds:
+            self.assertTrue(len(ex) == 2)
+            ex1, ex2 = ex
+            self.assertTrue(ex1 == ex2)
+            example_ids.append(ex1['example_id'])
+
+        self.assertListEqual(
+            [ex['example_id'] for ex in ds],
+            example_ids
+        )
+
+    def test_get_dataset_overwrite_false(self):
+        class FakeDictDatabase(DictDatabase):
+            def _get_dataset(self, name=None):
+                return super()._get_dataset(name).map(lambda x: (x, x))
+
+        self.fake_db = FakeDictDatabase(self.json)
+        fake_ds = self.fake_db.get_dataset(['train', 'test'])
+        ds = self.db.get_dataset(['train', 'test'])
+        example_ids = list()
+        for ex in fake_ds:
+            self.assertTrue(len(ex) == 2)
+            self.assertTrue(len(ex[0]) == 2)
+            ex1 = ex[0][0]
+            self.assertTrue(ex1 == ex[-1][-1])
+            example_ids.append(ex1['example_id'])
+
+        self.assertListEqual(
+            [ex['example_id'] for ex in ds],
+            example_ids
+        )
+
+
 
 class UniqueIDDatasetTest(unittest.TestCase):
     def setUp(self):
