@@ -1412,7 +1412,8 @@ class PrefetchDataset(Dataset):
         except Exception:
             raise RuntimeError(
                 'You can only use Prefetch if the incoming dataset is '
-                'indexable.'
+                'indexable.\n'
+                f'input_dataset:\n{input_dataset!r}'
             )
         assert num_workers >= 1, num_workers
         assert buffer_size >= num_workers, (num_workers, buffer_size)
