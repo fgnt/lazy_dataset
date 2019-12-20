@@ -172,7 +172,7 @@ class Database:
         if isinstance(name, str):
             pass
         elif isinstance(name, typing.Iterable) and not isinstance(name, dict):
-            datasets = [self.get_dataset(n) for n in name]
+            datasets = [self._get_dataset(n) for n in name]
             return lazy_dataset.concatenate(*datasets)
         else:
             raise TypeError(
