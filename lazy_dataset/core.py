@@ -27,7 +27,7 @@ def new(
         examples: The data to create a new dataset from
         immutable_warranty: How to ensure immutability. Available options are
             'pickle' and 'copy'.
-        name: An optional name for the dataset. Only effects the representer.
+        name: An optional name for the dataset. Only affects the representer.
 
     Returns:
         The `Dataset` created from `examples`
@@ -38,7 +38,7 @@ def new(
         >>> import lazy_dataset
         >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3}, name='MyDataset')
         >>> ds
-          DictDataset(name=MyDataset, len=3)
+          DictDataset(name='MyDataset', len=3)
         MapDataset(_pickle.loads)
         >>> ds.keys()
         ('a', 'b', 'c')
@@ -51,7 +51,7 @@ def new(
         >>> list(ds)
         [4, 6]
         >>> ds  # doctest: +ELLIPSIS
-              DictDataset(name=MyDataset, len=3)
+              DictDataset(name='MyDataset', len=3)
             MapDataset(_pickle.loads)
           MapDataset(<function <lambda> at ...>)
         FilterDataset(<function <lambda> at ...>)
@@ -1156,7 +1156,7 @@ class DictDataset(Dataset):
             return f'{self.__class__.__name__}(len={len(self)})'
         else:
             return f'{self.__class__.__name__}' \
-                   f'(name={self.name}, len={len(self)})'
+                   f'(name={self.name!r}, len={len(self)})'
 
     def keys(self):
         return self._keys
