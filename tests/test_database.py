@@ -23,6 +23,20 @@ class DatasetTest(unittest.TestCase):
         # dump_json(self.json, self.json_path)
         self.db = DictDatabase(self.json)
 
+    def test_get_dataset_allowed_argument_types_pass(self):
+        for name in (
+                'train',
+                ['train', 'test'],
+                (a for a in ['train', 'test']),
+                {'train': None, 'test': None}.keys(),
+        ):
+                _ = self.db.get_dataset(name)
+
+    def test_get_dataset_forbidden_argument_type_raise_type_error(self):
+        for name in (dict(a='b'), 3, None):
+            with self.assertRaises(TypeError):
+                _ = self.db.get_dataset(name)
+
     def test_dataset_names(self):
         self.assertListEqual(
             list(self.db.dataset_names),

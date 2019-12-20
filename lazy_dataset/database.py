@@ -1,6 +1,7 @@
 import json
 import weakref
 from pathlib import Path
+import typing
 
 import lazy_dataset
 
@@ -160,9 +161,16 @@ class Database:
                 f'Missing dataset_name, use e.g.: {self.dataset_names}'
             )
 
-        if isinstance(name, (tuple, list)):
+        if isinstance(name, str):
+            pass
+        elif isinstance(name, typing.Iterable) and not isinstance(name, dict):
             datasets = [self.get_dataset(n) for n in name]
             return lazy_dataset.concatenate(*datasets)
+        else:
+            raise TypeError(
+                'Argument type {type(name)} of {name} is not allowed!'
+                'Expected are str, list or tuple.'
+            )
 
         # Resulting dataset is immutable anyway due to pickle in
         # `lazy_dataset.from_dict`. This code here avoids to store the
