@@ -5,11 +5,15 @@ python:
 cache: pip
 
 install:
-  - pip install codecov
+  - pip install pytest coverage pytest-cov
+  - pip install codecov  # https://blog.travis-ci.com/2019-08-07-extensive-python-testing-on-travis-ci
   - pip install -e .
 
 script:
-  - pytest --doctest-modules tests/
+  - pytest --doctest-modules tests/ lazy_dataset/ --cov=lazy_dataset
+
+after_success:
+  - codecov # submit coverage
 
 env:
   - OMP_NUM_THREADS=1 MKL_NUM_THREADS=1

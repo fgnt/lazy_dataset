@@ -14,7 +14,11 @@ from typing import Optional, Union, Any, List, Dict
 LOG = logging.getLogger('lazy_dataset')
 
 
-def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
+def new(
+        examples: Union[list, dict],
+        immutable_warranty: str = 'pickle',
+        name: str = None,
+):
     """
     Creates a new dataset from data in `examples`. `examples` can be a `list`
     or a `dict`.
@@ -23,6 +27,7 @@ def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
         examples: The data to create a new dataset from
         immutable_warranty: How to ensure immutability. Available options are
             'pickle' and 'copy'.
+        name: An optional name for the dataset. Only affects the representer.
 
     Returns:
         The `Dataset` created from `examples`
@@ -31,9 +36,9 @@ def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
         Create a dataset from a dict:
 
         >>> import lazy_dataset
-        >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3})
+        >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3}, name='MyDataset')
         >>> ds
-          DictDataset(len=3)
+          DictDataset(name='MyDataset', len=3)
         MapDataset(_pickle.loads)
         >>> ds.keys()
         ('a', 'b', 'c')
@@ -46,7 +51,7 @@ def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
         >>> list(ds)
         [4, 6]
         >>> ds  # doctest: +ELLIPSIS
-              DictDataset(len=3)
+              DictDataset(name='MyDataset', len=3)
             MapDataset(_pickle.loads)
           MapDataset(<function <lambda> at ...>)
         FilterDataset(<function <lambda> at ...>)
@@ -59,24 +64,30 @@ def new(examples: Union[list, dict], immutable_warranty: str = 'pickle'):
 
     """
     if isinstance(examples, dict):
-        dataset = from_dict(examples, immutable_warranty=immutable_warranty)
+        dataset = from_dict(
+            examples, immutable_warranty=immutable_warranty, name=name)
     elif isinstance(examples, (tuple, list)):
-        dataset = from_list(examples, immutable_warranty=immutable_warranty)
+        dataset = from_list(
+            examples, immutable_warranty=immutable_warranty, name=name)
     else:
         raise TypeError(type(examples), examples)
     return dataset
 
 
-def from_dict(examples: dict, immutable_warranty: str = 'pickle'):
+def from_dict(
+        examples: dict,
+        immutable_warranty: str = 'pickle',
+        name: str = None,
+):
     if immutable_warranty == 'pickle':
         examples = {
             k: pickle.dumps(v)
             for k, v in examples.items()
         }
-        dataset = DictDataset(examples)
+        dataset = DictDataset(examples, name=name)
         dataset = dataset.map(pickle.loads)
     elif immutable_warranty == 'copy':
-        dataset = DictDataset(examples)
+        dataset = DictDataset(examples, name=name)
         dataset = dataset.map(deepcopy)
     else:
         raise ValueError(immutable_warranty)
@@ -84,17 +95,21 @@ def from_dict(examples: dict, immutable_warranty: str = 'pickle'):
     return dataset
 
 
-def from_list(examples: list, immutable_warranty: str = 'pickle'):
+def from_list(
+        examples: list,
+        immutable_warranty: str = 'pickle',
+        name: str = None,
+):
     assert isinstance(examples, (tuple, list)), examples
     if immutable_warranty == 'pickle':
         examples = [
             pickle.dumps(example)
             for example in examples
         ]
-        dataset = ListDataset(examples)
+        dataset = ListDataset(examples, name=name)
         dataset = dataset.map(pickle.loads)
     elif immutable_warranty == 'copy':
-        dataset = ListDataset(examples)
+        dataset = ListDataset(examples, name=name)
         dataset = dataset.map(deepcopy)
     else:
         raise ValueError(immutable_warranty)
@@ -204,21 +219,21 @@ def key_zip(*datasets):
         >>> import lazy_dataset
         >>> ds1 = lazy_dataset.new({'1': 1, '2': 2, '3': 3, '4': 4})
         >>> ds2 = lazy_dataset.new({'1': 5, '2': 6, '3': 7, '4': 8})
-        >>> key_zip(ds1, ds2)
+        >>> lazy_dataset.key_zip(ds1, ds2)
             DictDataset(len=4)
           MapDataset(_pickle.loads)
             DictDataset(len=4)
           MapDataset(_pickle.loads)
         KeyZipDataset()
 
-        >>> key_zip((ds1, ds2))
+        >>> lazy_dataset.key_zip((ds1, ds2))
             DictDataset(len=4)
           MapDataset(_pickle.loads)
             DictDataset(len=4)
           MapDataset(_pickle.loads)
         KeyZipDataset()
 
-        >>> list(key_zip(ds1, ds2))
+        >>> list(lazy_dataset.key_zip(ds1, ds2))
         [(1, 5), (2, 6), (3, 7), (4, 8)]
 
     Args:
@@ -766,7 +781,6 @@ class Dataset:
             elements that were mapped to the this group ID by `group_fn`
 
         Example:
-            >>> from IPython.lib.pretty import pprint
             >>> examples = {'a': {'z': 1}, 'b': {'z': 2}, 'c': {'z': 1}, 'd': {'z': 1}, 'e': {'z': 3}}
             >>> ds = DictDataset(examples)
             >>> for k, v in ds.groupby(lambda ex: ex['z']).items():
@@ -1049,6 +1063,11 @@ class Dataset:
         Draws random samples from the dataset using the random number generator
         `rng_state`.
 
+        Returns a random element of the dataset when size is None.
+        When size is an integer, a random sub dataset is returned.
+        Iterating two times over this dataset returns the same elements.
+
+
         Args:
             size: Size of the result. Must be smaller then `len(datset)` if
                 `replace=False`.
@@ -1137,7 +1156,7 @@ class DictDataset(Dataset):
             return f'{self.__class__.__name__}(len={len(self)})'
         else:
             return f'{self.__class__.__name__}' \
-                   f'(name={self.name}, len={len(self)})'
+                   f'(name={self.name!r}, len={len(self)})'
 
     def keys(self):
         return self._keys
@@ -1304,6 +1323,7 @@ class ParMapDataset(MapDataset):
 
 class CatchExceptionDataset(Dataset):
     """
+    >>> from lazy_dataset.core import DictDataset, FilterException
     >>> ds = DictDataset({'a': 1, 'b': 2, 'c': 3})
     >>> list(ds)
     [1, 2, 3]
@@ -1315,13 +1335,13 @@ class CatchExceptionDataset(Dataset):
     >>> list(ds.map(foo))
     Traceback (most recent call last):
     ...
-    core.FilterException: Exception msg
+    lazy_dataset.core.FilterException: Exception msg
     >>> list(ds.map(foo).catch())
     [1, 3]
     >>> ds.map(foo).catch()[0]  # doctest: +ELLIPSIS
     Traceback (most recent call last):
     ...
-    NotImplementedError: __getitem__ is not well defined for <class 'core.CatchExceptionDataset'>[0],
+    NotImplementedError: __getitem__ is not well defined for <class 'lazy_dataset.core.CatchExceptionDataset'>[0],
     because 0 is an index
     self:
         DictDataset(len=3)
@@ -1391,7 +1411,8 @@ class PrefetchDataset(Dataset):
         except Exception:
             raise RuntimeError(
                 'You can only use Prefetch if the incoming dataset is '
-                'indexable.'
+                'indexable.\n'
+                f'input_dataset:\n{input_dataset!r}'
             )
         assert num_workers >= 1, num_workers
         assert buffer_size >= num_workers, (num_workers, buffer_size)
@@ -1481,13 +1502,17 @@ class ReShuffleDataset(Dataset):
     """
 
     def __init__(self, input_dataset, rng=np.random):
-        self.permutation = np.arange(len(input_dataset))
+        self._permutation = np.arange(len(input_dataset))
         self.input_dataset = input_dataset
         self.rng = rng
 
+    @property
+    def permutation(self):
+        self.rng.shuffle(self._permutation)
+        return self._permutation
+
     def copy(self, freeze=False):
         if freeze:
-            self.rng.shuffle(self.permutation)
             return self.input_dataset.copy(freeze=freeze)[self.permutation]
         else:
             return self.__class__(
@@ -1508,7 +1533,6 @@ class ReShuffleDataset(Dataset):
     #     return frozenset(self.input_dataset.keys())
 
     def __iter__(self):
-        np.random.shuffle(self.permutation)
         for idx in self.permutation:
             yield self.input_dataset[idx]
 
@@ -1964,6 +1988,7 @@ class KeyZipDataset(Dataset):
 class BatchDataset(Dataset):
     """
 
+    >>> from lazy_dataset.core import DictDataset
     >>> import string
     >>> examples = {c: i for i, c in enumerate(string.ascii_letters[:7])}
     >>> ds = DictDataset(examples)
@@ -1994,7 +2019,7 @@ class BatchDataset(Dataset):
     >>> ds['abc']
     Traceback (most recent call last):
     ...
-    NotImplementedError: __getitem__ is not implemented for <class 'core.BatchDataset'>['abc'],
+    NotImplementedError: __getitem__ is not implemented for <class 'lazy_dataset.core.BatchDataset'>['abc'],
     where type('abc') == <class 'str'>
     self:
         DictDataset(len=7)
