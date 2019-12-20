@@ -1064,6 +1064,11 @@ class Dataset:
         Draws random samples from the dataset using the random number generator
         `rng_state`.
 
+        Returns a random element of the dataset when size is None.
+        When size is an integer, a random sub dataset is returned.
+        Iterating two times over this dataset returns the same elements.
+
+
         Args:
             size: Size of the result. Must be smaller then `len(datset)` if
                 `replace=False`.
