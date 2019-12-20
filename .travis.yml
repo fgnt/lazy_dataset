@@ -9,7 +9,7 @@ install:
   - pip install -e .
 
 script:
-  - pytest --doctest-modules tests/
+  - pytest --doctest-modules tests/ lazy_dataset/
 
 env:
   - OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
