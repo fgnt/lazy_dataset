@@ -182,7 +182,7 @@ class Database:
             pass
 
         examples = self.get_examples(name)
-        ds = lazy_dataset.from_dict(examples)
+        ds = lazy_dataset.from_dict(examples, name=name)
 
         self._dataset_weak_ref_dict[name] = ds
 
