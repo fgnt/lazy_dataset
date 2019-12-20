@@ -1324,6 +1324,7 @@ class ParMapDataset(MapDataset):
 
 class CatchExceptionDataset(Dataset):
     """
+    >>> from lazy_dataset.core import DictDataset, FilterException
     >>> ds = DictDataset({'a': 1, 'b': 2, 'c': 3})
     >>> list(ds)
     [1, 2, 3]
@@ -1335,13 +1336,13 @@ class CatchExceptionDataset(Dataset):
     >>> list(ds.map(foo))
     Traceback (most recent call last):
     ...
-    core.FilterException: Exception msg
+    lazy_dataset.core.FilterException: Exception msg
     >>> list(ds.map(foo).catch())
     [1, 3]
     >>> ds.map(foo).catch()[0]  # doctest: +ELLIPSIS
     Traceback (most recent call last):
     ...
-    NotImplementedError: __getitem__ is not well defined for <class 'core.CatchExceptionDataset'>[0],
+    NotImplementedError: __getitem__ is not well defined for <class 'lazy_dataset.core.CatchExceptionDataset'>[0],
     because 0 is an index
     self:
         DictDataset(len=3)
@@ -1984,6 +1985,7 @@ class KeyZipDataset(Dataset):
 class BatchDataset(Dataset):
     """
 
+    >>> from lazy_dataset.core import DictDataset
     >>> import string
     >>> examples = {c: i for i, c in enumerate(string.ascii_letters[:7])}
     >>> ds = DictDataset(examples)
@@ -2014,7 +2016,7 @@ class BatchDataset(Dataset):
     >>> ds['abc']
     Traceback (most recent call last):
     ...
-    NotImplementedError: __getitem__ is not implemented for <class 'core.BatchDataset'>['abc'],
+    NotImplementedError: __getitem__ is not implemented for <class 'lazy_dataset.core.BatchDataset'>['abc'],
     where type('abc') == <class 'str'>
     self:
         DictDataset(len=7)
