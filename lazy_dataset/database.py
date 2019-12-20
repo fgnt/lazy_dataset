@@ -156,6 +156,14 @@ class Database:
         Returns:
             A lazy dataset.
         """
+        return self._get_dataset(name)
+
+    def _get_dataset(self, name=None):
+        """
+        The private get_dataset function allows for databases to overwrite
+        get_dataset and adding a map function without recursively calling
+        the map function in case of multiple dataset names.
+        """
         if name is None:
             raise TypeError(
                 f'Missing dataset_name, use e.g.: {self.dataset_names}'
