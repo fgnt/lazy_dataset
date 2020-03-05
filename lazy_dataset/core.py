@@ -2936,16 +2936,16 @@ class ProfilingDataset(Dataset):
         >>> ds_copy = ProfilingDataset(ds.map(sleep))
         >>> _ = list(ds_copy)
         >>> print(repr(ds_copy))  # doctest: +ELLIPSIS
-            DictDataset(len=3) (time = 0:00:00.0000...)
-          MapDataset(_pickle.loads) (time = 0:00:00.000...)
-        MapDataset(<function sleep at 0x...>) (time = 0:00:03.00...)
+            DictDataset(len=3) (fetch duration = 0:00:00.0000...)
+          MapDataset(_pickle.loads) (fetch duration = 0:00:00.000...)
+        MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:03.00...)
         >>> ds_copy = ProfilingDataset(ds.map(sleep).prefetch(4, 8))
         >>> _ = list(ds_copy)
         >>> print(repr(ds_copy))  # doctest: +ELLIPSIS
-              DictDataset(len=3) (time = 0:00:00.0000...)
-            MapDataset(_pickle.loads) (time = 0:00:00.000...)
-          MapDataset(<function sleep at 0x...>) (time = 0:00:03.00...)
-        PrefetchDataset(4, 8, 't') (time = 0:00:01.0...)
+              DictDataset(len=3) (fetch duration = 0:00:00.0000...)
+            MapDataset(_pickle.loads) (fetch duration = 0:00:00.000...)
+          MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:03.00...)
+        PrefetchDataset(4, 8, 't') (fetch duration = 0:00:01.0...)
 
     """
     # alternative time.process_time
@@ -2978,8 +2978,8 @@ class ProfilingDataset(Dataset):
 
     def __repr__(self):
         r = repr(self.input_dataset)
-        # Better alternative for the name "time"?
-        r += f' (time = {datetime.timedelta(seconds=self.time[0])})'
+        # Better alternative for the name "fetch duration"?
+        r += f' (fetch duration = {datetime.timedelta(seconds=self.time[0])})'
         return r
 
     def __len__(self):
