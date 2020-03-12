@@ -12,9 +12,11 @@ from torch.utils.data import DataLoader as TorchDataLoader
 |    2    | Batching | yes | yes |
 |    2    | Collate batch | manual | automatic |
 |    3    | Shuffle | yes | yes |
-|    4    | Multi-process data loading | yes | yes |
+|    4    | Multi-process data loading | yes | yes (built-in shared memory GPU) |
+|    4    | Multi-thread data loading | yes (default) | no |
 |    see [README](../README.md)    | Filter (builtins.filter) | yes | no |
 |    5    | Sort by key | yes | no |
+|    5    | Sort by value | yes | no |
 |    6    | Draw random example | yes | no |
 |    7    | Unbatch | yes | no |
 
@@ -85,40 +87,47 @@ from torch.utils.data import DataLoader as TorchDataLoader
 4. Parallel data loading
     ```python
     >>> data_loader = TorchDataLoader(torch_dict_ds, num_workers=4)
-    >>> dict_ds = dict_ds.prefetch(num_workers=4, buffer_size=4)
+    # default: use threading backend
+    >>> dict_ds_t = dict_ds.prefetch(num_workers=4, buffer_size=8, backend='t')
+    # multi-process backend
+    >>> dict_ds_mp = dict_ds.prefetch(num_workers=4, buffer_size=8, backend='mp')
     ```
-5. Sort by key
+5. Sort
   ```python
   >>> examples = {
-  ...     'ex_1': {
-  ...         'example_id': 'ex_1',
+  ...     'a': {
   ...         'observation': [1, 2, 3],
   ...         'label': 2
   ...     },
-  ...     'ex_2': {
-  ...         'example_id': 'ex_2',
+  ...     'b': {
   ...         'observation': [4, 5, 6],
   ...         'label': 3
   ...     },
-  ...     'ex3': {
-  ...         'example_id': 'ex_3',
+  ...     'c': {
   ...         'observation': [7, 8, 9],
   ...         'label': 1
   ...     }
   ... }
 
   >>> ds = lazy_dataset.from_dict(examples)
-  >>> for example in ds:
-  ...     print(example)
-  {'example_id': 'ex_1', 'observation': [1, 2, 3], 'label': 2}
-  {'example_id': 'ex_2', 'observation': [4, 5, 6], 'label': 3}
-  {'example_id': 'ex_3', 'observation': [7, 8, 9], 'label': 1}
-  >>> ds = ds.sort(lambda x: x['label'])
-  >>> for example in ds:
-  ...     print(example)
-  {'example_id': 'ex_3', 'observation': [7, 8, 9], 'label': 1}
-  {'example_id': 'ex_1', 'observation': [1, 2, 3], 'label': 2}
-  {'example_id': 'ex_2', 'observation': [4, 5, 6], 'label': 3}
+  >>> for key, example in ds.items():
+  ...     print(key, example)
+  a {'observation': [1, 2, 3], 'label': 2}
+  b {'observation': [4, 5, 6], 'label': 3}
+  c {'observation': [7, 8, 9], 'label': 1}
+  # Sort by value
+  >>> ds_sorted = ds.sort(lambda ex: ex['label'])
+  >>> for key, example in ds_sorted.items():
+  ...     print(key, example)
+  c {'observation': [7, 8, 9], 'label': 1}
+  a {'observation': [1, 2, 3], 'label': 2}
+  b {'observation': [4, 5, 6], 'label': 3}
+  # Sort by key
+  >>> for key, example in (ds_sorted.sort()).items():
+  ...     print(key, example)
+  a {'observation': [1, 2, 3], 'label': 2}
+  b {'observation': [4, 5, 6], 'label': 3}
+  c {'observation': [7, 8, 9], 'label': 1}
   ```
 6. Draw random example
   ```python
@@ -131,7 +140,7 @@ from torch.utils.data import DataLoader as TorchDataLoader
   >>> print(ds.random_choice(7, rng_state=rng_state, replace=True))
   SliceDataset([3 3 3 1 3 2 4])
   ```
-7. Unbatch
+7. Unbatch (with local shuffle)
   ```python
   >>> examples = {'a': [1, 2], 'b': [3, 4]}
   >>> ds = lazy_dataset.from_dict(examples)
@@ -139,6 +148,8 @@ from torch.utils.data import DataLoader as TorchDataLoader
   [[1, 2], [3, 4]]
   >>> list(ds.unbatch())
   [1, 2, 3, 4]
+  >>> list(ds.unbatch().shuffle(reshuffle=True, buffer_size=4))
+  [3, 1, 2, 4]
   ```
 
 ## Throughput
