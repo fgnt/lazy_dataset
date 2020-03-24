@@ -160,7 +160,7 @@ To compare the throughput (loaded examples per second) with PyTorch's DataLoader
 Then, the spectrograms are shuffled, batched into small mini-batches and padded to the same sequence length to yield tensors of shape B x T x F.
 This corresponds to a common data pipeline which we are using for our research experiments.
 
-The throughput is calculated for an iteration through the `train_clean_100` dataset which contains 28539 audio sequences.
+The throughput is calculated for a complete iteration of the `train_clean_100` dataset which contains 28539 audio sequences.
 Each dataset iteration is repeated ten times and the average throughput is reported.
 The throughput is plotted against the number of workers used for data fetching.
 `Number Workers = 0` means that no sub-processes / threads are spawned and all
