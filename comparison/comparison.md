@@ -166,16 +166,107 @@ The throughput is plotted against the number of workers used for data fetching.
 `Number Workers = 0` means that no sub-processes / threads are spawned and all
 data is loaded in the main thread.
 
+### Environment
+```
+OS: Ubuntu 18.04.4 LTS
+Python version: 3.6.8
+torch version: 1.0.0
+torch.version.cuda: 9.0.176
+lazy_dataset version: 0.0.6
+```
+
+### CPU
+
+In a first experiment, the data is only loaded onto the CPU.
+
+CPU specifications:
+```bash
+$ lscpu
+Architecture:        x86_64
+CPU op-mode(s):      32-bit, 64-bit
+Byte Order:          Little Endian
+CPU(s):              8
+On-line CPU(s) list: 0-7
+Thread(s) per core:  2
+Core(s) per socket:  4
+Socket(s):           1
+NUMA node(s):        1
+Vendor ID:           GenuineIntel
+CPU family:          6
+Model:               158
+Model name:          Intel(R) Xeon(R) CPU E3-1240 v6 @ 3.70GHz
+Stepping:            9
+CPU MHz:             3562.482
+CPU max MHz:         4100.0000
+CPU min MHz:         800.0000
+BogoMIPS:            7392.00
+Virtualization:      VT-x
+L1d cache:           32K
+L1i cache:           32K
+L2 cache:            256K
+L3 cache:            8192K
+NUMA node0 CPU(s):   0-7
+```
 ![Throughput CPU](
   throughput_timings_size-2000_shuffle_librispeech_runs-10_batch-size16.png "Throughput when loading onto CPU"
 )
 
-Loading onto GPU:  
+### GPU
+
+In a second experiment, the data is additionally transferred to the GPU.
+The `pin_memory` flag puts the tensors in pinned memory during multi-process data loading for fast transfer to the GPU.
+
+CPU specifications:
+```bash
+$ lscpu
+Architecture:        x86_64
+CPU op-mode(s):      32-bit, 64-bit
+Byte Order:          Little Endian
+CPU(s):              8
+On-line CPU(s) list: 0-7
+Thread(s) per core:  2
+Core(s) per socket:  4
+Socket(s):           1
+NUMA node(s):        1
+Vendor ID:           GenuineIntel
+CPU family:          6
+Model:               158
+Model name:          Intel(R) Xeon(R) CPU E3-1240 v6 @ 3.70GHz
+Stepping:            9
+CPU MHz:             800.113
+CPU max MHz:         4100.0000
+CPU min MHz:         800.0000
+BogoMIPS:            7392.00
+Virtualization:      VT-x
+L1d cache:           32K
+L1i cache:           32K
+L2 cache:            256K
+L3 cache:            8192K
+NUMA node0 CPU(s):   0-7
+```
+GPU specifications:
+```bash
+$ nvidia-smi
++-----------------------------------------------------------------------------+
+| NVIDIA-SMI 390.116                Driver Version: 390.116                   |
+|-------------------------------+----------------------+----------------------+
+| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+|===============================+======================+======================|
+|   0  GeForce GTX 970     Off  | 00000000:01:00.0  On |                  N/A |
+|  0%   39C    P8    17W / 163W |     32MiB /  4041MiB |      0%      Default |
++-------------------------------+----------------------+----------------------+
+$ nvcc --version
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2017 NVIDIA Corporation
+Built on Fri_Sep__1_21:08:03_CDT_2017
+Cuda compilation tools, release 9.0, V9.0.176
+```
+
 ![Throughput GPU](
   throughput_timings_size-2000_shuffle_librispeech_runs-10_batch-size16_gpu.png "Throughput when loading onto GPU"
 )
 
-GPU throughput is higher because a different machine was used.
 The plots were created with following script:
 ```python
 # On CPU: python throughput.py
