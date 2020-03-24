@@ -133,10 +133,10 @@ from torch.utils.data import DataLoader as TorchDataLoader
   ```python
   >>> import numpy as np
   >>> rng_state = np.random.RandomState(0)
-  >>> examples = {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
+  >>> examples = {'a': 10, 'b': 20, 'c': 30, 'd': 40, 'e': 50}
   >>> ds = lazy_dataset.from_dict(examples)
   >>> ds.random_choice(rng_state=rng_state)
-  3
+  30
   >>> print(ds.random_choice(7, rng_state=rng_state, replace=True))
   SliceDataset([3 3 3 1 3 2 4])
   ```
