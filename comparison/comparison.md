@@ -153,14 +153,19 @@ from torch.utils.data import DataLoader as TorchDataLoader
   ```
 
 ## Throughput
-To compare the throughput (loaded examples per second) with PyTorch's DataLoader, the following scenario was chosen:
-Audio sequences from the [LibriSpeech corpus](http://www.openslr.org/12/) are loaded into RAM, batched into chunks of 16 sequences and the sequences in each batch are zero-padded to the same length.
-The throughput is calculated for a whole iteration of the complete `train_clean_100` dataset which contains 28539 audio sequences.
-Each dataset iteration is repeated ten times and the averaged throughput is reported.
-In the first experiment, the data is only loaded onto the CPU.
-In the second experiment, the data is additionally transferred to the GPU.
+To compare the throughput (loaded examples per second) with PyTorch's DataLoader, the data pipeline was designed to consider two kinds of load:
+* I/O load: First, audio sequences from the [LibriSpeech corpus](http://www.openslr.org/12/) are loaded into RAM.
+* CPU load: Given the audio sequences, STFT spectrograms (FFT size=512, shift=128) are computed.
 
-Loading onto CPU:  
+Then, the spectrograms are shuffled, batched into small mini-batches and padded to the same sequence length to yield tensors of shape B x T x F.
+This corresponds to a common data pipeline which we are using for our research experiments.
+
+The throughput is calculated for an iteration through the `train_clean_100` dataset which contains 28539 audio sequences.
+Each dataset iteration is repeated ten times and the average throughput is reported.
+The throughput is plotted against the number of workers used for data fetching.
+`Number Workers = 0` means that no sub-processes / threads are spawned and all
+data is loaded in the main thread.
+
 ![Throughput CPU](
   throughput_timings_size-2000_shuffle_librispeech_runs-10_batch-size16.png "Throughput when loading onto CPU"
 )
