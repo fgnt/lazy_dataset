@@ -73,14 +73,25 @@ from torch.utils.data import DataLoader as TorchDataLoader
     [{'example_id': 'ex_1', 'label': 1, 'observation': array([1, 2, 3])},
      {'example_id': 'ex_2', 'label': 2, 'observation': array([4, 5, 6])}]
     >>> def collate_fn(batch):
-    ...     batched_values = list(zip(*[ex.values() for ex in batch]))
-    ...     return {k: v for k, v in zip(batch[0].keys(), batched_values)}
+    ...     for b in batch[1:]:
+    ...         assert batch[0].keys() == b.keys(), batch
+    ...     return {k: [b[k] for b in batch] for k in batch[0].keys()}
     >>> dict_ds_collate = dict_ds_batch.map(collate_fn)
     >>> next(iter(dict_ds_collate))
     {'example_id': ['ex_1', 'ex_2'],
      'label': [1, 2],
      'observation': [array([1, 2, 3]), array([4, 5, 6])]}
     ```
+    If you have [padertorch](https://github.com/fgnt/padertorch) installed,
+    you can also use `padertorch.data.utils.collate_fn` which performs nested
+    batching:
+    ```python
+    >>> from padertorch.data.utils import collate_fn
+    >>> dict_ds_collate = dict_ds_batch.map(collate_fn)
+    >>> next(iter(dict_ds_collate))
+    {'example_id': ['ex_1', 'ex_2'],
+     'label': [1, 2],
+     'observation': [array([1, 2, 3]), array([4, 5, 6])]}
     ```
 3. Shuffle
     ```python
