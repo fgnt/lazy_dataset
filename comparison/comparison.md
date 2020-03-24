@@ -60,7 +60,7 @@ from torch.utils.data import DataLoader as TorchDataLoader
     ```python
     >>> data_loader = TorchDataLoader(
     ...     torch_dict_ds, batch_size=2, collate_fn=None
-    )
+    ... )
     >>> next(iter(data_loader))
     {'example_id': ['ex_1', 'ex_2'],
      'observation': [tensor([1, 4]), tensor([2, 5]), tensor([3, 6])],
