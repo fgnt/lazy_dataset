@@ -208,7 +208,7 @@ L3 cache:            8192K
 NUMA node0 CPU(s):   0-7
 ```
 ![Throughput CPU](
-  throughput_timings_size-2000_shuffle_librispeech_runs-10_batch-size16.png "Throughput when loading onto CPU"
+  throughput_cpu_bs16.png "Throughput when loading onto CPU"
 )
 
 ### GPU
@@ -264,7 +264,7 @@ Cuda compilation tools, release 9.0, V9.0.176
 ```
 
 ![Throughput GPU](
-  throughput_timings_size-2000_shuffle_librispeech_runs-10_batch-size16_gpu.png "Throughput when loading onto GPU"
+  throughput_gpu_bs32.png "Throughput when loading onto GPU"
 )
 
 The plots were created with following script:
