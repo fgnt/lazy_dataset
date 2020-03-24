@@ -267,13 +267,14 @@ Cuda compilation tools, release 9.0, V9.0.176
   throughput_gpu_bs32.png "Throughput when loading onto GPU"
 )
 
+### Reproduce
+
 The plots were created with following script:
 ```python
-# On CPU: python throughput.py
-# On GPU: export CUDA_VISIBLE_DEVICES=0; python throughput.py --gpu
-import os
-from functools import partial
+# On CPU: python time_loaders.py
+# On GPU: export CUDA_VISIBLE_DEVICES=0; python time_loaders.py --gpu
 import time
+import logging
 
 import numpy as np
 import torch
@@ -287,24 +288,30 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # https://github.com/fgnt/paderbox
-from paderbox.io.audioread import load_audio
 from paderbox.utils.nested import flatten
+from paderbox.io.audioread import load_audio
+from paderbox.transform.module_stft import spectrogram
 
 # https://github.com/fgnt/padertorch
-import padertorch as pt
 from padertorch.contrib.jensheit.data import Padder
 
 # exclusive to NT group of Paderborn University
 from padercontrib.database.librispeech import LibriSpeech
 
 
-class AudioReadMap:
-
-    def __init__(self, key):
-        self.key = key
+class Prepare:
 
     def __call__(self, example):
-        example['audio_data'] = load_audio(flatten(example)[self.key])
+        # IO
+        example['audio_data'] = (
+            load_audio(flatten(example)['audio_path.observation'])
+            .astype('float32')
+        )
+        # CPU load
+        example['spectrogram'] = (
+            spectrogram(example['audio_data'], size=512, shift=128)
+            .astype(np.float32)
+        )
         return example
 
 
@@ -327,156 +334,190 @@ class ShuffleSampler(Sampler):
         return iter(permutation)
 
 
-class WrapDataLoaderToGPU:
-
-    def __init__(self, data_loader, key, device=0, non_blocking=False):
-        """
-        Wraps a torch DataLoader to yield CUDA tensors during iteration
-        """
-        self.loader = data_loader
-        self.key = key
-        self.device = device
-        self.non_blocking = non_blocking
-
-    def __iter__(self):
-        for example in self.loader:
-            if not self.non_blocking:
-                example = pt.data.example_to_device(example, device=self.device)
-            else:
-                example[self.key] = example[self.key].to(
-                    device=self.device, non_blocking=True
-                )
-            yield example
-
-
-def _prepare_lazy_dataset(dataset, num_workers=0, to_gpu=False):
+def _prepare_lazy_dataset(dataset, num_workers=0, backend='t', batch_size=16):
     as_lazy_dataset = (
         dataset
-            .shuffle(rng=np.random.RandomState(0))
-            .batch(16, drop_last=False)
-            .map(Padder(padding_keys=['audio_data']))
+        .shuffle(rng=np.random.RandomState(0))
+        .batch(batch_size, drop_last=False)
+        .map(Padder(padding_keys=['spectrogram']))
     )
     if num_workers:
         as_lazy_dataset = as_lazy_dataset.prefetch(
-            num_workers, 16  # prefetch one batch
-        )
-    if to_gpu:
-        as_lazy_dataset = as_lazy_dataset.map(
-            partial(pt.data.example_to_device, device=0)
+            num_workers, 2 * num_workers, backend=backend
         )
     return as_lazy_dataset
 
 
-def _prepare_data_loader(dataset, num_workers=0, pin_memory=False, to_gpu=False):
+def _prepare_data_loader(
+    dataset, num_workers=0, pin_memory=False, batch_size=16
+):
+    padder = Padder(padding_keys=['spectrogram'])
+
+    def collate_wrapper(batch):
+        return padder(batch)
+
     as_torch_data_loader = DataLoader(
         dataset,
-        batch_size=16,
-        # custom collating: pad audio sequences to same length
-        collate_fn=Padder(padding_keys=['audio_data']),
+        batch_size=batch_size,
+        # custom collating: pad spectrograms to same length
+        collate_fn=collate_wrapper,
         drop_last=False,
         # ensure that shuffling yields the same batches as lazy_dataset
         sampler=ShuffleSampler(dataset, seed=0),
         num_workers=num_workers, pin_memory=pin_memory
     )
-    if to_gpu:
-        as_torch_data_loader = WrapDataLoaderToGPU(
-            as_torch_data_loader, 'audio_data', device=0,
-            non_blocking=pin_memory
-        )
     return as_torch_data_loader
 
 
-def assert_example(dataset, batch_size=16, key='audio_data', on_gpu=False):
-    example = next(iter(dataset))
-    assert isinstance(example[key], torch.Tensor), type(example[key])
-    assert example[key].ndimension() >= 2, example[key].shape
-    assert example[key].shape[0] == batch_size, example[key].shape
-    assert example[key].is_cuda == on_gpu, (example[key].device, on_gpu)
-
-
-def iteration_timing(
-    dataset, size, key='audio_data', runs=10
+def assert_example(
+    dataset, batch_size=16, keys=['spectrogram'], pin_memory=False,
+    to_gpu=False
 ):
-    total_time = 0
-    for _ in range(runs):
+    example = next(iter(dataset))
+    for key in keys:
+        assert isinstance(example[key], torch.Tensor), (key, type(example[key]))
+        assert example[key].shape[0] == batch_size, (key, example[key].shape)
+        assert example[key].is_pinned() == pin_memory, (
+            key, example[key].is_pinned(), pin_memory
+        )
+        if to_gpu:
+            x = example[key].to(0)
+            assert x.is_cuda is True, (x.device, to_gpu)
+
+
+def iteration_timing(dataset, size, key='spectrogram', runs=10, to_gpu=False):
+    time_per_run = []
+    for i in range(runs):
         start = time.time()
         for example in iter(dataset):
             # access data
-            _ = example[key]
-        total_time += time.time() - start
-    # throughput: loaded examples (audio sequences) per second
-    return size * runs // total_time
+            _ = example['spectrogram'].to(0 if to_gpu else 'cpu')
+        duration = time.time() - start
+        logging.info(f'Duration for run {i}: {duration:.2f}s')
+        time_per_run.append(duration)
+    # throughput: loaded examples per second
+    return size // np.median(time_per_run)  # works better for outliers than np.mean
 
 
-def take_timings(dataset, runs=10, num_workers=0, to_gpu=False):
+def take_timings(
+    dataset, runs=10, num_workers=0, backends=['t'], to_gpu=False, batch_size=16
+):
     num_examples = len(dataset)
-    as_lazy_dataset = _prepare_lazy_dataset(dataset, num_workers, to_gpu=to_gpu)
-    as_torch_data_loader = _prepare_data_loader(
-        dataset, num_workers, to_gpu=to_gpu
-    )
-    assert_example(as_lazy_dataset, batch_size=16, on_gpu=to_gpu)
-    assert_example(as_torch_data_loader, batch_size=16, on_gpu=to_gpu)
+    throughput_torch_data_loader = []
+    if to_gpu:
+        pin_memory_runs = [False, True]
+    else:
+        pin_memory_runs = [False]
+    for pin_memory in pin_memory_runs:
+        as_torch_data_loader = _prepare_data_loader(
+            dataset, num_workers, pin_memory=pin_memory, batch_size=batch_size
+        )
+        assert_example(
+            as_torch_data_loader, batch_size=batch_size, pin_memory=pin_memory,
+            to_gpu=to_gpu
+        )
+        logging.info(
+            f'Taking timings for torch.DataLoader (pin_memory={pin_memory})'
+        )
+        throughput_torch_data_loader.append(iteration_timing(
+            as_torch_data_loader, num_examples, runs=runs, to_gpu=to_gpu
+        ))
 
-    throughput_lazy_dataset = iteration_timing(
-        as_lazy_dataset, num_examples, runs=runs
-    )
-    throughput_torch_data_loader = iteration_timing(
-        as_torch_data_loader, num_examples, runs=runs
-    )
-    return throughput_lazy_dataset, throughput_torch_data_loader
+    throughput_lazy_dataset = []
+    for backend in backends:
+        as_lazy_dataset = _prepare_lazy_dataset(
+            dataset, num_workers, backend=backend, batch_size=batch_size
+        )
+        assert_example(as_lazy_dataset, batch_size=batch_size, to_gpu=to_gpu)
+        logging.info(f'Taking timings for lazy_dataset (backend={backend})')
+        throughput_lazy_dataset.append(iteration_timing(
+            as_lazy_dataset, num_examples, runs=runs, to_gpu=to_gpu
+        ))
+    return throughput_torch_data_loader, throughput_lazy_dataset
 
 
-def plot_timings(x, t_ld, t_td, num_examples):
-    plt.plot(x, t_ld, marker='o', label='lazy_dataset')
-    plt.plot(
-        x, t_td, marker='s', label='torch.DataLoader'
-    )
-    plt.title(
-        f'Batch, pad, shuffle, iterate over {num_examples} sequences\n'
-        '(from LibriSpeech train_clean_100)'
-    )
+def plot_timings(
+    x, t_ld, t_td, num_examples, backends=['t'], to_gpu=False,
+    outfile='throughput.png'
+):
+    if to_gpu:
+        pin_memory_runs = [False, True]
+    else:
+        pin_memory_runs = [False]
+    markers_ld = ['o', 'x', '^', 'd']
+    markers_td = ['s', '^', 'd']
+    for i, backend in enumerate(backends):
+        plt.plot(
+            x, [t[i] for t in t_ld], marker=markers_ld[i],
+            label=f'lazy_dataset, backend={backend}'
+        )
+    for i, pin_memory in enumerate(pin_memory_runs):
+        plt.plot(
+            x, [t[i] for t in t_td], marker=markers_td[i],
+            label=f'torch.DataLoader, pin_memory={pin_memory}'
+        )
     plt.xlabel('Number Workers')
     plt.xticks(x)
     plt.ylabel(r'Throughput (examples per $s$)')
     plt.legend()
     plt.grid()
-    plt.savefig('throughput.png')
+    logging.info(f'Saved to {outfile}.')
+    plt.savefig(outfile)
 
 
 @click.command()
+@click.option('--batch-size', type=int, default=16)
 @click.option('--runs', type=int, default=10)
 @click.option('--gpu', is_flag=True)
-def main(runs, gpu):
-    # store LibriSpeech audio paths in a dict
+@click.option('--outfile', type=str, default='throughput.png')
+def main(batch_size, runs, gpu, outfile):
+    logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
+
+    # store LibriSpeech audio paths in dict
     db = LibriSpeech()
     data = db.get_examples('train_clean_100')
+    """
+    >>> import pprint
+    >>> pprint.pprint(data['103-1240-0000'])
+    {'audio_path': {'observation': '/net/db/LibriSpeech/train-clean-100/103/1240/103-1240-0000.flac'},
+     'gender': 'f',
+     'num_samples': 225360,
+     'speaker_id': '103-1240',
+     'example_id': '103-1240-0000',
+     'dataset': 'train_clean_100'}
+    """
 
     dataset = lazy_dataset.from_dict(data)
-    dataset = dataset.map(
-        AudioReadMap(key='audio_path.observation')
-    )
+    dataset = dataset.map(Prepare())
     # cache audio_data, otherwise the first iteration through the data will be
     # slower than the following ones
     for example in tqdm.tqdm(
-        iter(dataset.prefetch(num_workers=4, buffer_size=4)),
+        iter(dataset.prefetch(num_workers=4, buffer_size=8)),
         total=len(dataset),
         desc=f'Cache audio_data (num_workers=4)'
     ):
         _ = example['audio_data']
     workers_list = [0, 1, 2, 4, 8]
+    backends = ['t', 'concurrent_mp']
     timings_lazy_dataset = list()
     timings_torch_data_loader = list()
     for num_workers in workers_list:
-        t_ld, t_td = take_timings(
-            dataset, num_workers=num_workers, runs=runs, to_gpu=gpu
+        logging.info(
+            f'Starting timing measurement for num_workers={num_workers}'
+        )
+        t_td, t_ld = take_timings(
+            dataset, num_workers=num_workers, runs=runs, backends=backends,
+            to_gpu=gpu, batch_size=batch_size
         )
         timings_lazy_dataset.append(t_ld)
         timings_torch_data_loader.append(t_td)
     plot_timings(
-        workers_list, timings_lazy_dataset, timings_torch_data_loader, len(data)
+        workers_list, timings_lazy_dataset, timings_torch_data_loader,
+        len(data), backends=backends, to_gpu=gpu, outfile=outfile
     )
 
 
 if __name__ == '__main__':
     main()
+
 ```
