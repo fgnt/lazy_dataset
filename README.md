@@ -77,6 +77,9 @@ MapDataset(_pickle.loads)
 FilterDataset(<function <lambda> at 0x7ff74efb67b8>)
 ```
 
+## Comparison with PyTorch's DataLoader
+
+See [here](comparison/comparison.md) for a feature and throughput comparison of lazy_dataset with PyTorch's DataLoader.
 
 ## Installation
 
