@@ -23,17 +23,18 @@ from torch.utils.data import DataLoader as TorchDataLoader
 ## Examples
 1. Dataset
     ```python
+    >>> import numpy as np
     >>> examples = {
-    ...    'ex_1': {
-    ...        'example_id': 'ex_1',
-    ...        'observation': [1, 2, 3],
-    ...        'label': 1
-    ...    },
-    ...    'ex_2': {
-    ...        'example_id': 'ex_2',
-    ...        'observation': [4, 5, 6],
-    ...        'label': 2
-    ...    }
+    ...     'ex_1': {
+    ...         'example_id': 'ex_1',
+    ...         'observation': np.array([1, 2, 3]),
+    ...         'label': 1
+    ...     },
+    ...     'ex_2': {
+    ...         'example_id': 'ex_2',
+    ...         'observation': np.array([4, 5, 6]),
+    ...         'label': 2
+    ...     }
     ... }
 
     >>> class TorchDictDataset(torch_data.Dataset):
@@ -50,11 +51,11 @@ from torch.utils.data import DataLoader as TorchDataLoader
 
     >>> torch_dict_ds = TorchDictDataset(examples)
     >>> print(torch_dict_ds[0])
-    {'example_id': 'ex_1', 'observation': [1, 2, 3], 'label': 1}
+    {'example_id': 'ex_1', 'label': 1, 'observation': array([1, 2, 3])}
 
     >>> dict_ds = lazy_dataset.from_dict(examples)
     >>> print(dict_ds[0])
-    {'example_id': 'ex_1', 'observation': [1, 2, 3], 'label': 1}
+    {'example_id': 'ex_1', 'label': 1, 'observation': array([1, 2, 3])}
     ```
 2. Batching & Collate
     ```python
@@ -63,21 +64,23 @@ from torch.utils.data import DataLoader as TorchDataLoader
     ... )
     >>> next(iter(data_loader))
     {'example_id': ['ex_1', 'ex_2'],
-     'observation': [tensor([1, 4]), tensor([2, 5]), tensor([3, 6])],
-     'label': tensor([1, 2])}
+     'label': tensor([1, 2]),
+     'observation': tensor([[1, 2, 3],
+         [4, 5, 6]])}
 
-    >>> dict_ds = dict_ds.batch(2)
-    >>> next(iter(dict_ds))
-    [{'example_id': 'ex_1', 'observation': [1, 2, 3], 'label': 1},
-     {'example_id': 'ex_2', 'observation': [4, 5, 6], 'label': 2}]
+    >>> dict_ds_batch = dict_ds.batch(2)
+    >>> next(iter(dict_ds_batch))
+    [{'example_id': 'ex_1', 'label': 1, 'observation': array([1, 2, 3])},
+     {'example_id': 'ex_2', 'label': 2, 'observation': array([4, 5, 6])}]
     >>> def collate_fn(batch):
     ...     batched_values = list(zip(*[ex.values() for ex in batch]))
     ...     return {k: v for k, v in zip(batch[0].keys(), batched_values)}
-    >>> dict_ds = dict_ds.map(collate_fn)
-    >>> next(iter(dict_ds))
-    {'example_id': ('ex_1', 'ex_2'),
-     'observation': ([1, 2, 3], [4, 5, 6]),
-     'label': (1, 2)}
+    >>> dict_ds_collate = dict_ds_batch.map(collate_fn)
+    >>> next(iter(dict_ds_collate))
+    {'example_id': ['ex_1', 'ex_2'],
+     'label': [1, 2],
+     'observation': [array([1, 2, 3]), array([4, 5, 6])]}
+    ```
     ```
 3. Shuffle
     ```python
