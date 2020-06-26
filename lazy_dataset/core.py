@@ -2271,15 +2271,13 @@ class DynamicBucketDataset(Dataset):
         buckets = list()
         dropped_count = 0
         for i, example in enumerate(self.input_dataset):
-            found_bucket = False
-            for j, (bucket, _) in enumerate(buckets):
-                found_bucket = bucket.maybe_append(example)
-                if found_bucket:
+            bucket = None
+            for j, (bucket_j, _) in enumerate(buckets):
+                if bucket_j.maybe_append(example):
+                    bucket = bucket_j
                     break
-            if not found_bucket:
-                bucket = self.bucket_cls(
-                    example, **self.bucket_kwargs
-                )
+            if bucket is None:
+                bucket = self.bucket_cls(example, **self.bucket_kwargs)
                 buckets.append((bucket, i))
                 j = len(buckets) - 1
 
