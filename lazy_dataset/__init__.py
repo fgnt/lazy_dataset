@@ -1,6 +1,7 @@
 from .core import (
     new,
     concatenate,
+    intersperse,
     key_zip,
     Dataset,
     from_dict,

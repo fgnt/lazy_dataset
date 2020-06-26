@@ -15,6 +15,8 @@ Supported transformations:
  - `dataset[10:20]`: Get a sub dataset that contains only the examples in the slice 10 to 20.
  - `dataset.filter(filter_fn, lazy=True)` Drops examples where `filter_fn(example)` is false ([builtins.filter](https://docs.python.org/3/library/functions.html#filter)).
  - `dataset.concatenate(*others)`: Concatenates two or more datasets ([numpy.concatenate](https://docs.scipy.org/doc/numpy-1.14.0/reference/generated/numpy.concatenate.html))
+ - `dataset.intersperse(*others)`: Combine two or more datasets such that examples of each input dataset are evenly spaced (https://stackoverflow.com/a/19293603).
+ - `dataset.zip(*others)`: Zip two or more datasets
  - `dataset.shuffle(reshuffle=False)`: Shuffles the dataset. When `reshuffle` is `True` it shuffles each time when you iterate over the data.
  - `dataset.tile(reps, shuffle=False)`: Repeats the dataset `reps` times and concatenates it ([numpy.tile](https://docs.scipy.org/doc/numpy/reference/generated/numpy.tile.html))
  - `dataset.groupby(group_fn)`: Groups examples together. In contrast to `itertools.groupby` a sort is not nessesary, like in pandas ([itertools.groupby](https://docs.python.org/3/library/itertools.html#itertools.groupby), [pandas.DataFrame.groupby](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.groupby.html))
