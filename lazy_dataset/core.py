@@ -165,6 +165,48 @@ def concatenate(*datasets):
     return ConcatenateDataset(*datasets)
 
 
+def intersperse(*datasets):
+    """
+    Intersperses datasets such that examples from each input dataset are
+    evenly spaced in the output dataset.
+
+    Args:
+        *others: list of datasets to be interspersed
+
+    Returns:
+        `IntersperseDataset` combining examples of all provided datasets.
+
+    Example:
+        >>> import lazy_dataset
+        >>> ds1 = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5})
+        >>> ds2 = lazy_dataset.new({'f': 6, 'g': 7, 'h': 8})
+        >>> interspersed = lazy_dataset.intersperse(ds1, ds2)
+        >>> interspersed
+            DictDataset(len=5)
+          MapDataset(_pickle.loads)
+            DictDataset(len=3)
+          MapDataset(_pickle.loads)
+        IntersperseDataset()
+        >>> list(interspersed)
+        [1, 6, 2, 3, 7, 4, 5, 8]
+        >>> list(interspersed.keys())
+        ['a', 'f', 'b', 'c', 'g', 'd', 'e', 'h']
+
+    """
+    if len(datasets) == 0:
+        raise ValueError('Need at least one dataset to concatenate!')
+    if len(datasets) == 1 and isinstance(datasets[0], (tuple, list)):
+        datasets, = datasets
+    if not all([isinstance(dataset, Dataset) for dataset in datasets]):
+        raise TypeError(
+            f'All input arguments must be datasets! {Dataset} ' + ' '.join(
+                str(type(d)) for d in datasets) + '|' + ' '.join(
+                str(isinstance(d, Dataset)) for d in datasets))
+    if len(datasets) == 1:
+        return datasets[0]
+    return IntersperseDataset(*datasets)
+
+
 def _zip(*datasets):
     """
     Create a new `Dataset` zipping all passed datasets.
@@ -1851,11 +1893,6 @@ class ConcatenateDataset(Dataset):
                     f'There are {len(duplicates)} duplicates.'
                     f'\n[{duplicates_str}]'
                 )
-
-            assert len(keys) == len(set(keys)), \
-                'Keys are not unique. ' \
-                'len(self._keys) = {len(self._keys)} != ' \
-                '{len(set(self._keys))} = len(set(self._keys))'
             self._keys = tuple(keys)
         return self._keys
 
@@ -1964,11 +2001,6 @@ class IntersperseDataset(Dataset):
                     f'There are {len(duplicates)} duplicates.'
                     f'\n[{duplicates_str}]'
                 )
-
-            assert len(keys) == len(set(keys)), \
-                'Keys are not unique. ' \
-                'len(self._keys) = {len(self._keys)} != ' \
-                '{len(set(self._keys))} = len(set(self._keys))'
             self._keys = tuple(keys)
         return self._keys
 
