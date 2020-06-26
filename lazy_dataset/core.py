@@ -571,6 +571,40 @@ class Dataset:
             others, = others
         return ConcatenateDataset(self, *others)
 
+    def intersperse(self, *others) -> 'IntersperseDataset':
+        """
+        Intersperses datasets such that examples from each input dataset are
+        evenly spaced in the output dataset.
+
+        Args:
+            *others: list of datasets to be interspersed
+
+        Returns:
+            `IntersperseDataset` combining examples of all provided datasets.
+
+        Example:
+            >>> import lazy_dataset
+            >>> ds1 = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5})
+            >>> ds2 = lazy_dataset.new({'f': 6, 'g': 7, 'h': 8})
+            >>> interspersed = ds1.intersperse(ds2)
+            >>> interspersed
+                DictDataset(len=5)
+              MapDataset(_pickle.loads)
+                DictDataset(len=3)
+              MapDataset(_pickle.loads)
+            IntersperseDataset()
+            >>> list(interspersed)
+            [1, 6, 2, 3, 7, 4, 5, 8]
+            >>> list(interspersed.keys())
+            ['a', 'f', 'b', 'c', 'g', 'd', 'e', 'h']
+
+        """
+        if len(others) == 0:
+            return self
+        if len(others) == 1 and isinstance(others[0], (tuple, list)):
+            others, = others
+        return IntersperseDataset(self, *others)
+
     def zip(self, *others) -> 'ZipDataset':
         """
         Creates a `Dataset` by zipping together the given datasets.
@@ -1868,6 +1902,100 @@ class ConcatenateDataset(Dataset):
             return super().__getitem__(item)
 
 
+class IntersperseDataset(Dataset):
+    """
+    See Dataset.intersperse
+
+    >>> examples = {'a': 1, 'b': 2, 'c': 3}
+    >>> ds = DictDataset(examples)
+    >>> IntersperseDataset(ds, ds).keys()
+    Traceback (most recent call last):
+    ...
+    AssertionError: Keys are not unique. There are 3 duplicates.
+    ['a', 'b', 'c']
+    >>> list(IntersperseDataset(ds, ds.map(lambda x: x+10)))
+    [1, 11, 2, 12, 3, 13]
+    >>> list(IntersperseDataset(IntersperseDataset(ds, ds), ds.map(lambda x: x+10)))
+    [1, 1, 11, 2, 2, 12, 3, 3, 13]
+    """
+
+    def __init__(self, *input_datasets):
+        """
+
+        Args:
+            *input_datasets: list of datasets
+
+        """
+        self.input_datasets = input_datasets
+        assert len(self.input_datasets) >= 1, (f'You have to provide at least '
+                                               f'one dataset.'
+                                               f'\n{self.input_datasets}')
+        self.order = sorted([
+            ((example_index + 1) / len(dataset), dataset_index, example_index)
+            for dataset_index, dataset in enumerate(input_datasets)
+            for example_index in range(len(dataset))
+        ])
+        assert all([dataset.indexable for dataset in self.input_datasets])
+
+    def copy(self, freeze=False):
+        return self.__class__(
+            *[ds.copy(freeze=freeze) for ds in self.input_datasets]
+        )
+
+    _keys = None
+
+    def keys(self):
+        if self._keys is None:
+            ds_keys = [list(ds.keys()) for ds in self.input_datasets]
+            keys = [
+                ds_keys[dataset_idx][example_idx]
+                for _, dataset_idx, example_idx in self.order
+            ]
+            if len(keys) != len(set(keys)):
+                duplicates = [
+                    item  # https://stackoverflow.com/a/9835819/5766934
+                    for item, count in collections.Counter(keys).items()
+                    if count > 1
+                ]
+                duplicates_str = textwrap.shorten(
+                    str(duplicates)[1:-1], width=500, placeholder=' ...')
+                raise AssertionError(
+                    f'Keys are not unique. '
+                    f'There are {len(duplicates)} duplicates.'
+                    f'\n[{duplicates_str}]'
+                )
+
+            assert len(keys) == len(set(keys)), \
+                'Keys are not unique. ' \
+                'len(self._keys) = {len(self._keys)} != ' \
+                '{len(set(self._keys))} = len(set(self._keys))'
+            self._keys = tuple(keys)
+        return self._keys
+
+    @property
+    def indexable(self):
+        return True
+
+    def __iter__(self):
+        for _, dataset_idx, example_idx in self.order:
+            yield self.input_datasets[dataset_idx][example_idx]
+
+    def __len__(self):
+        return sum([len(i) for i in self.input_datasets])
+
+    def __getitem__(self, item):
+        if isinstance(item, numbers.Integral):
+            _, dataset_idx, example_idx = self.order[item]
+            return self.input_datasets[dataset_idx][example_idx]
+        elif isinstance(item, str):
+            self.keys()  # test unique keys
+            for dataset in self.input_datasets:
+                if item in dataset.keys():
+                    return dataset[item]
+        else:
+            return super().__getitem__(item)
+
+
 class ZipDataset(Dataset):
     """
     See Dataset.zip
@@ -1875,7 +2003,7 @@ class ZipDataset(Dataset):
 
     def __init__(self, *input_datasets):
         """
-        
+
         Args:
             *input_datasets: list of datasets
 
