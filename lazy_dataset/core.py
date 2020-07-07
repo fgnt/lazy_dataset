@@ -2421,7 +2421,7 @@ class CacheDataset(Dataset):
 
     @property
     def indexable(self) -> bool:
-        return True
+        return self.dataset.indexable
 
     def keys(self) -> list:
         return self.dataset.keys()
