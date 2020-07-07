@@ -2489,6 +2489,10 @@ class CacheDataset(Dataset):
             keep_mem_free=self._keep_mem_free,
             immutable_warranty=self.immutable_warranty
         )
+
+        # We have to share the cache here because otherwise a new cache would
+        # be initialized at every copy and copy is called by prefetch before
+        # iterating over the dataset
         copy.cache = self.cache
         return copy
 
