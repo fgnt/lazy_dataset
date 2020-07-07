@@ -1169,7 +1169,7 @@ class Dataset:
             ...         raise FilterException()
             ...     return x
             >>> ds = ds.map(m)
-            >>> ds = ds.cache(lazy=False, catch_filter_exception=True)
+            >>> ds = ds.catch().cache(lazy=False)
             >>> len(ds)
             2
 
@@ -1203,9 +1203,9 @@ class Dataset:
             try:
                 self.keys()
             except NotImplementedError:
-                return from_dict(dict(self))
-            else:
                 return from_list(list(self))
+            else:
+                return from_dict(dict(self))
 
 
 class DictDataset(Dataset):
