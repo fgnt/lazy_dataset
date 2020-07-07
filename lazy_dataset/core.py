@@ -1186,13 +1186,12 @@ class Dataset:
                 of `keep_mem_free`. If `False`, it immediatly, on invocation
                 of `cache`, loads all examples from the dataset into memory
                 without respecting `keep_mem_free`.
-            keep_mem_free: Tuple of value and unit (value, "unit"). Unit can be
-                "GB" for absolute memory and "fraction" for a percentage of
-                memory, e.g. `(5, "GB")` always keeps (at least) 5GB of memory
-                free and `(0.5, "fraction")` keeps 50% of the memory free. Keep
-                in mind that this only controlls the memory usage of the cache
-                and that other programs or parts of the program can also use
-                up memory!
+            keep_mem_free: A human-friendly string containing a value and a
+                unit ("<value><optional space><unit>"). Unit can be either
+                "%" or any absolute byte unit (e.g., "B", "GB", "G"). If unit
+                is "%", it keeps <value> percent of the memory free (e.g.,
+                "50%"). If an absolute unit, it keeps that many bytes free
+                (e.g., "5GB")
         """
         if lazy:
             assert self.indexable
@@ -2489,23 +2488,14 @@ class CacheDataset(Dataset):
         if keep_mem_free is None:
             return None
 
-        assert isinstance(keep_mem_free, (list, tuple)) \
-               and len(keep_mem_free) == 2, (
-            f'keep_mem_free has to be a tuple of value and unit, and not '
-            f'{keep_mem_free}'
-        )
-
-        value, unit = keep_mem_free
-
-        import psutil
-
-        if unit == 'GB':
-            return value * 1024 ** 3
-        elif unit == 'fraction':
-            assert 0 <= value < 1, value
-            return psutil.virtual_memory().total * value
+        if keep_mem_free.strip().endswith('%'):
+            import psutil
+            value = float(keep_mem_free.strip(' %'))
+            assert 0 <= value <= 100, value
+            return psutil.virtual_memory().total * value / 100
         else:
-            raise ValueError(f'Unknown unit for memory size: {unit}')
+            import humanfriendly
+            return humanfriendly.parse_size(keep_mem_free, binary=True)
 
     def __getitem__(self, item):
         if isinstance(item, numbers.Integral):
@@ -2529,6 +2519,7 @@ class CacheDataset(Dataset):
 
     def __iter__(self):
         for k in self.keys():
+            print(k)
             yield self[k]
 
     def __len__(self):

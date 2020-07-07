@@ -26,7 +26,7 @@ def test_cache_immutable():
 
 def test_cache_call_only_once():
     call_counter = Counter()
-    dataset = lazy_dataset.new(dict(zip(list(range(10)), list(range(10)))))
+    dataset = lazy_dataset.new(dict(zip(map(str, range(10)), range(10))))
 
     def m(x):
         call_counter[x] += 1
@@ -42,8 +42,7 @@ def test_cache_call_only_once():
 
 
 def test_cache_mem_abs():
-    dataset = lazy_dataset.new(dict(zip(list(range(100)), list(range(100)))))
-    dataset = dataset.map(lambda x: np.random.randn(100, 100))
+    dataset = lazy_dataset.new(dict(zip(map(str, range(100)), range(100))))
 
     available_mem = gb(8)
     def virtual_memory():
@@ -54,7 +53,7 @@ def test_cache_mem_abs():
 
     with mock.patch('psutil.virtual_memory', new=virtual_memory):
         # Test absolute
-        ds = dataset.cache(keep_mem_free=(5, 'GB'))
+        ds = dataset.cache(keep_mem_free='5GB')
 
         available_mem = gb(6)
         it = iter(ds)
@@ -67,8 +66,7 @@ def test_cache_mem_abs():
 
 
 def test_cache_mem_fraction():
-    dataset = lazy_dataset.new(dict(zip(list(range(100)), list(range(100)))))
-    dataset = dataset.map(lambda x: np.random.randn(100, 100))
+    dataset = lazy_dataset.new(dict(zip(map(str, range(100)), range(100))))
 
     available_mem = gb(8)
     def virtual_memory():
@@ -78,7 +76,7 @@ def test_cache_mem_fraction():
         )
 
     with mock.patch('psutil.virtual_memory', new=virtual_memory):
-        ds = dataset.cache(keep_mem_free=(0.5, 'fraction'))
+        ds = dataset.cache(keep_mem_free='50%')
 
         available_mem = gb(9)
         it = iter(ds)
@@ -88,18 +86,3 @@ def test_cache_mem_fraction():
         available_mem = gb(7)
         next(it)
         assert len(ds.cache) == 1
-
-
-def test_cache_catch_filter_exception():
-    ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3, 'd': 4})
-
-    def m(x):
-        if x % 2:
-            raise lazy_dataset.FilterException()
-        return x
-
-    ds = ds.map(m)
-    assert len(ds) == 4
-
-    ds = ds.cache(lazy=False, catch_filter_exception=True)
-    assert list(ds) == [2, 4]

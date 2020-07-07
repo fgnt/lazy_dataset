@@ -24,6 +24,7 @@ VERSION = '0.0.9'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
+    'humanfriendly'
     # 'requests', 'maya', 'records',
 ]
 
