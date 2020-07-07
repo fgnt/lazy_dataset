@@ -86,3 +86,8 @@ def test_cache_mem_fraction():
         available_mem = gb(7)
         next(it)
         assert len(ds.cache) == 1
+
+
+def test_cache_from_ordered_not_indexable():
+    dataset = lazy_dataset.new(list(range(10)))
+    assert len(dataset.filter(lambda x: x % 2).cache(lazy=False)) == 5
