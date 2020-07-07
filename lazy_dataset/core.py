@@ -2519,7 +2519,6 @@ class CacheDataset(Dataset):
 
     def __iter__(self):
         for k in self.keys():
-            print(k)
             yield self[k]
 
     def __len__(self):
