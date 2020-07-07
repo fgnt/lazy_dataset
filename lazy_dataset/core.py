@@ -2450,6 +2450,9 @@ class CacheDataset(Dataset):
             raise ValueError(f'Unknown unit for memory size: {unit}')
 
     def __getitem__(self, item):
+        if isinstance(item, numbers.Integral):
+            item = self.keys()[item]
+
         if item not in self.cache:
             # Check if we have enough free memory
             if self._keep_mem_free is not None:
