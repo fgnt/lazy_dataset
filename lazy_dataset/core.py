@@ -1132,6 +1132,59 @@ class Dataset:
         else:
             return apply_fn(self)
 
+    def cache(self, lazy=True, keep_mem_free=None,
+              catch_filter_exception=False):
+        """
+        Examples:
+
+            `Dataset.cache` can give a dataset that uses filter excpetions and
+            thus has an unkown effective length the correct length again:
+            >>> ds = new({'a': 1, 'b': 2, 'c': 3, 'd': 4})
+            >>> def m(x):
+            ...     if x % 2:
+            ...         raise FilterException()
+            ...     return x
+            >>> ds = ds.map(m)
+            >>> ds = ds.cache(lazy=False, catch_filter_exception=True)
+            >>> len(ds)
+            2
+
+            Generate lots of data and hope that it doesn't crash
+            >>> ds = new(dict(zip(list(range(10000)), list(range(10000)))))
+            >>> import numpy as np
+            >>> ds =ds.map(lambda x: np.random.randn(1000, 1000, 1000))
+            >>> ds = ds.cache(keep_mem_free=(5, 'GB'))
+            >>> for example in ds:
+            ...     print(example.shape)
+
+        Args:
+            lazy:
+            keep_mem_free:
+
+        Returns:
+
+        """
+        if lazy:
+            assert not catch_filter_exception
+            return CacheDataset(self, keep_mem_free)
+        else:
+            assert not keep_mem_free
+            assert self.indexable
+
+            if not catch_filter_exception:
+                return from_dict(dict(self))
+            else:
+                if catch_filter_exception is True:
+                    catch_filter_exception = FilterException
+
+                cache = {}
+                for key in self.keys():
+                    try:
+                        cache[key] = self[key]
+                    except catch_filter_exception:
+                        pass
+
+                return from_dict(cache)
 
 class DictDataset(Dataset):
     """
@@ -2311,6 +2364,110 @@ class DynamicBucketDataset(Dataset):
                 dropped_count += len(data)
         if dropped_count > 0:
             print(f'Dropped {dropped_count} examples')
+
+
+class CacheDataset(Dataset):
+    """
+    Warning:
+        This dataset is *not* immutable! It maintains the cache as an instance
+        variable.
+
+    Warning:
+        This dataset freezes everything that comes before this dataset! E.g.,
+        anything random before applying `.cache` is frozen. Any shuffling has
+        to be applied after caching!
+
+    Warning:
+        `keep_mem_free` has no effect, if `lazy=False`! If `lazy=False`, the
+        dataset will always load all data
+    """
+
+    def __init__(self, dataset: Dataset, keep_mem_free=None,
+                 immutable_warranty: str = 'pickle') -> None:
+        super().__init__()
+        assert dataset.indexable, (
+            'Cache Dataset only works if dataset is indexable!'
+        )
+        self.dataset = dataset
+        self.cache = {}
+
+        self._keep_mem_free = self._get_memory_size(keep_mem_free)
+        self.immutable_warranty = immutable_warranty
+
+        if immutable_warranty == 'pickle':
+            self._serialize = pickle.dumps
+            self._deserialize = pickle.loads
+        elif immutable_warranty == 'copy':
+            self._serialize = lambda x: x
+            self._deserialize = deepcopy
+        else:
+            raise ValueError(immutable_warranty)
+
+    @property
+    def indexable(self) -> bool:
+        return True
+
+    def keys(self) -> list:
+        return self.dataset.keys()
+
+    @staticmethod
+    def _get_memory_size(keep_mem_free):
+        if keep_mem_free is None:
+            return None
+
+        assert isinstance(keep_mem_free, (list, tuple)) \
+               and len(keep_mem_free) == 2, (
+            f'keep_mem_free has to be a tuple of value and unit, and not '
+            f'{keep_mem_free}'
+        )
+
+        value, unit = keep_mem_free
+
+        import psutil
+
+        if unit == 'GB':
+            return value * 1024 ** 3
+        elif unit == 'fraction':
+            assert 0 <= value < 1, value
+            return psutil.virtual_memory().total * value
+        else:
+            raise ValueError(f'Unknown unit for memory size: {unit}')
+
+    def __getitem__(self, item):
+        if item not in self.cache:
+            # Check if we have enough free memory
+            if self._keep_mem_free is not None:
+                import psutil
+                if psutil.virtual_memory().available <= self._keep_mem_free:
+                    # Return without writing to cache if there is not enough
+                    # free memory
+                    return self.dataset[item]
+
+            self.cache[item] = self._serialize(self.dataset[item])
+        return self._deserialize(self.cache[item])
+
+    def __iter__(self):
+        for k in self.keys():
+            yield self[k]
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def copy(self, freeze: bool = False) -> 'Dataset':
+        if not freeze:
+            import warnings
+            warnings.warn(
+                'Copying a CacheDataset preserves the cache, i.e., the '
+                'already cached part of the dataset will be frozen even if '
+                'freeze=False!'
+            )
+        copy = self.__class__(
+            self.dataset.copy(freeze),
+            keep_mem_free=self._keep_mem_free,
+            immutable_warranty=self.immutable_warranty
+        )
+        copy.cache = self.cache
+        return copy
 
 
 if __name__ == '__main__':
