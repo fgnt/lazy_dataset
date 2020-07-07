@@ -9,7 +9,7 @@ import random
 import collections
 
 import numpy as np
-from typing import Optional, Union, Any, List, Dict
+from typing import Optional, Union, Any, List, Dict, Tuple
 
 LOG = logging.getLogger('lazy_dataset')
 
@@ -1132,9 +1132,27 @@ class Dataset:
         else:
             return apply_fn(self)
 
-    def cache(self, lazy=True, keep_mem_free=None,
-              catch_filter_exception=False):
+    def cache(
+            self,
+            lazy: bool = True,
+            keep_mem_free: Tuple[Union[float, int], str] = None,
+            catch_filter_exception: Any = False
+    ):
         """
+        Caches data in memory. The dataset has to be indexable because the
+        cache needs a unique identifier (key) for each example.
+
+        Warnings:
+            This dataset is *not* immutable! It maintains the cache as an
+            instance variable.
+
+            This dataset freezes everything that comes before this dataset!
+            E.g., anything random before applying `.cache` is frozen. Any
+            shuffling has to be applied after caching!
+
+            `keep_mem_free` has no effect, if `lazy=False`! If `lazy=False`,
+            the dataset will always load all data.
+
         Examples:
 
             `Dataset.cache` can give a dataset that uses filter excpetions and
@@ -1152,17 +1170,29 @@ class Dataset:
             Generate lots of data and hope that it doesn't crash
             >>> ds = new(dict(zip(list(range(10000)), list(range(10000)))))
             >>> import numpy as np
-            >>> ds =ds.map(lambda x: np.random.randn(1000, 1000, 1000))
+            >>> ds = ds.map(lambda x: np.random.randn(1000, 1000, 1000))
             >>> ds = ds.cache(keep_mem_free=(5, 'GB'))
             >>> for example in ds:
-            ...     print(example.shape)
+            ...     pass # ...
 
         Args:
-            lazy:
-            keep_mem_free:
-
-        Returns:
-
+            lazy: If `True`, it caches "on the fly" and respects the setting
+                of `keep_mem_free`. If `False`, it immediatly, on invocation
+                of `cache`, loads all examples from the dataset into memory
+                without respecting `keep_mem_free`.
+            keep_mem_free: Tuple of value and unit (value, "unit"). Unit can be
+                "GB" for absolute memory and "fraction" for a percentage of
+                memory, e.g. `(5, "GB")` always keeps (at least) 5GB of memory
+                free and `(0.5, "fraction")` keeps 50% of the memory free. Keep
+                in mind that this only controlls the memory usage of the cache
+                and that other programs or parts of the program can also use
+                up memory!
+            catch_filter_exception: If `True`, `FilterException`s are catched
+                and the element that raised the exception while processing is
+                dropped. This can also be set to a specific type (or a list of
+                types) of exceptions to catch. This option is not compatible
+                with `lazy=True`. The resulting dataset always has a length (in
+                contrast to `prefetch` or `catch`).
         """
         if lazy:
             assert not catch_filter_exception
@@ -1185,6 +1215,7 @@ class Dataset:
                         pass
 
                 return from_dict(cache)
+
 
 class DictDataset(Dataset):
     """
@@ -2367,21 +2398,6 @@ class DynamicBucketDataset(Dataset):
 
 
 class CacheDataset(Dataset):
-    """
-    Warning:
-        This dataset is *not* immutable! It maintains the cache as an instance
-        variable.
-
-    Warning:
-        This dataset freezes everything that comes before this dataset! E.g.,
-        anything random before applying `.cache` is frozen. Any shuffling has
-        to be applied after caching!
-
-    Warning:
-        `keep_mem_free` has no effect, if `lazy=False`! If `lazy=False`, the
-        dataset will always load all data
-    """
-
     def __init__(self, dataset: Dataset, keep_mem_free=None,
                  immutable_warranty: str = 'pickle') -> None:
         super().__init__()
