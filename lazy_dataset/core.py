@@ -2453,17 +2453,21 @@ class CacheDataset(Dataset):
         if isinstance(item, numbers.Integral):
             item = self.keys()[item]
 
-        if item not in self.cache:
-            # Check if we have enough free memory
-            if self._keep_mem_free is not None:
-                import psutil
-                if psutil.virtual_memory().available <= self._keep_mem_free:
-                    # Return without writing to cache if there is not enough
-                    # free memory
-                    return self.dataset[item]
+        if isinstance(item, str):
+            if item not in self.cache:
+                # Check if we have enough free memory
+                if self._keep_mem_free is not None:
+                    import psutil
+                    if psutil.virtual_memory().available <= self._keep_mem_free:
+                        # Return without writing to cache if there is not enough
+                        # free memory
+                        return self.dataset[item]
 
-            self.cache[item] = self._serialize(self.dataset[item])
-        return self._deserialize(self.cache[item])
+                self.cache[item] = self._serialize(self.dataset[item])
+            return self._deserialize(self.cache[item])
+        else:
+            # Support for slices etc.
+            return super().__getitem__(item)
 
     def __iter__(self):
         for k in self.keys():
