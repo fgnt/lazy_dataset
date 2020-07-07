@@ -304,6 +304,13 @@ class Dataset:
             f'self: \n{repr(self)}'
         )
 
+    @property
+    def ordered(self) -> bool:
+        raise NotImplementedError(
+            f'ordered is not implemented for {self.__class__}.\n'
+            f'self: \n{repr(self)}'
+        )
+
     def __getitem__(self, item):
         if isinstance(item, (slice, tuple, list)):
             return SliceDataset(item, self)
@@ -1136,7 +1143,6 @@ class Dataset:
             self,
             lazy: bool = True,
             keep_mem_free: Tuple[Union[float, int], str] = None,
-            catch_filter_exception: Any = False
     ):
         """
         Caches data in memory. The dataset has to be indexable because the
@@ -1187,34 +1193,20 @@ class Dataset:
                 in mind that this only controlls the memory usage of the cache
                 and that other programs or parts of the program can also use
                 up memory!
-            catch_filter_exception: If `True`, `FilterException`s are catched
-                and the element that raised the exception while processing is
-                dropped. This can also be set to a specific type (or a list of
-                types) of exceptions to catch. This option is not compatible
-                with `lazy=True`. The resulting dataset always has a length (in
-                contrast to `prefetch` or `catch`).
         """
         if lazy:
-            assert not catch_filter_exception
+            assert self.indexable
             return CacheDataset(self, keep_mem_free)
         else:
             assert not keep_mem_free
-            assert self.indexable
+            assert self.indexable or self.ordered
 
-            if not catch_filter_exception:
+            try:
+                self.keys()
+            except NotImplementedError:
                 return from_dict(dict(self))
             else:
-                if catch_filter_exception is True:
-                    catch_filter_exception = FilterException
-
-                cache = {}
-                for key in self.keys():
-                    try:
-                        cache[key] = self[key]
-                    except catch_filter_exception:
-                        pass
-
-                return from_dict(cache)
+                return from_list(list(self))
 
 
 class DictDataset(Dataset):
@@ -1233,6 +1225,10 @@ class DictDataset(Dataset):
 
     @property
     def indexable(self):
+        return True
+
+    @property
+    def ordered(self):
         return True
 
     def __str__(self):
@@ -1289,6 +1285,10 @@ class ListDataset(Dataset):
     def indexable(self):
         return True
 
+    @property
+    def ordered(self) -> bool:
+        return True
+
     def __str__(self):
         if self.name is None:
             return f'{self.__class__.__name__}(len={len(self)})'
@@ -1342,6 +1342,11 @@ class MapDataset(Dataset):
     @property
     def indexable(self):
         return self.input_dataset.indexable
+
+    @property
+    def ordered(self) -> bool:
+        # This is only true if the mapped function is deterministic!
+        return self.input_dataset.ordered
 
     def __str__(self):
         map_function_str = str(self.map_function)
@@ -1454,6 +1459,10 @@ class CatchExceptionDataset(Dataset):
     def indexable(self):
         return False
 
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
     def __getitem__(self, item):
         if isinstance(item, (str)):
             return self.input_dataset[item]
@@ -1519,6 +1528,10 @@ class PrefetchDataset(Dataset):
     @property
     def indexable(self):
         return False
+
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
 
     def __len__(self):
         if self.catch_filter_exception:
@@ -1607,6 +1620,10 @@ class ReShuffleDataset(Dataset):
     def indexable(self):
         return False
 
+    @property
+    def ordered(self) -> bool:
+        return False
+
     def __len__(self):
         return len(self.input_dataset)
 
@@ -1656,6 +1673,10 @@ class LocalShuffleDataset(Dataset):
 
     @property
     def indexable(self):
+        return False
+
+    @property
+    def ordered(self) -> bool:
         return False
 
     def __len__(self):
@@ -1743,6 +1764,10 @@ class SliceDataset(Dataset):
             self.input_dataset.indexable, self.input_dataset)
         return True
 
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
     _keys = None
 
     def keys(self):
@@ -1814,6 +1839,10 @@ class FilterDataset(Dataset):
     def indexable(self):
         return False
 
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
     def __str__(self):
         return f'{self.__class__.__name__}({self.filter_function})'
 
@@ -1861,6 +1890,10 @@ class ConcatenateDataset(Dataset):
     @property
     def indexable(self):
         return all([ds.indexable for ds in self.input_datasets])
+
+    @property
+    def ordered(self) -> bool:
+        return all(ds.ordered for ds in self.input_datasets)
 
     def __iter__(self):
         for input_dataset in self.input_datasets:
@@ -1980,6 +2013,10 @@ class ZipDataset(Dataset):
     def indexable(self):
         return all([dataset.indexable for dataset in self.input_datasets])
 
+    @property
+    def ordered(self) -> bool:
+        return all(ds.ordered for ds in self.input_datasets)
+
     def __iter__(self):
         for examples in zip(*self.input_datasets):
             yield examples
@@ -2039,6 +2076,10 @@ class KeyZipDataset(Dataset):
     @property
     def indexable(self):
         return all([ds.indexable for ds in self.input_datasets])
+
+    @property
+    def ordered(self) -> bool:
+        return True
 
     def __iter__(self):
         for key in self.keys():
@@ -2128,6 +2169,10 @@ class BatchDataset(Dataset):
     def indexable(self):
         return self.input_dataset.input_dataset
 
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
     def __str__(self):
         return f'{self.__class__.__name__}(batch_size={self.batch_size})'
 
@@ -2185,6 +2230,10 @@ class UnbatchDataset(Dataset):
     @property
     def indexable(self):
         return False
+
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
 
     def __iter__(self):
         for batch in self.input_dataset:
@@ -2351,6 +2400,11 @@ class DynamicBucketDataset(Dataset):
     def indexable(self):
         return False
 
+    @property
+    def ordered(self) -> bool:
+        # This is only true if the bucket is deterministic!
+        return self.input_dataset.ordered
+
     def __iter__(self):
         buckets = list()
         dropped_count = 0
@@ -2402,7 +2456,7 @@ class CacheDataset(Dataset):
                  immutable_warranty: str = 'pickle') -> None:
         super().__init__()
         assert dataset.indexable, (
-            'Cache Dataset only works if dataset is indexable!'
+            'CacheDataset only works if dataset is indexable!'
         )
         self.dataset = dataset
         self.cache = {}
@@ -2422,6 +2476,10 @@ class CacheDataset(Dataset):
     @property
     def indexable(self) -> bool:
         return self.dataset.indexable
+
+    @property
+    def ordered(self) -> bool:
+        return self.dataset.ordered
 
     def keys(self) -> list:
         return self.dataset.keys()
