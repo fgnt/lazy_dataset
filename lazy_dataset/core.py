@@ -2502,7 +2502,9 @@ class CacheDataset(Dataset):
         if keep_mem_free is None:
             return None
 
-        if keep_mem_free.strip().endswith('%'):
+        if isinstance(keep_mem_free, int):
+            return keep_mem_free
+        elif keep_mem_free.strip().endswith('%'):
             import psutil
             value = float(keep_mem_free.strip(' %'))
             assert 0 <= value <= 100, value
