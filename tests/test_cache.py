@@ -91,3 +91,8 @@ def test_cache_mem_fraction():
 def test_cache_from_ordered_not_indexable():
     dataset = lazy_dataset.new(list(range(10)))
     assert len(dataset.filter(lambda x: x % 2).cache(lazy=False)) == 5
+
+
+def test_cache_no_keys():
+    ds = lazy_dataset.new(list(range(100))).cache()
+    assert list(ds) == list(range(100))
