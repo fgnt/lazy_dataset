@@ -2479,13 +2479,6 @@ class CacheDataset(Dataset):
         else:
             raise ValueError(immutable_warranty)
 
-        try:
-            self.keys()
-        except NotImplementedError:
-            self._has_keys = False
-        else:
-            self._has_keys = True
-
     @property
     def indexable(self) -> bool:
         return self.input_dataset.indexable
@@ -2514,10 +2507,10 @@ class CacheDataset(Dataset):
             return humanfriendly.parse_size(keep_mem_free, binary=True)
 
     def __getitem__(self, item):
-        if isinstance(item, numbers.Integral) and self._has_keys:
-            item = self.keys()[item]
+        if isinstance(item, str):
+            item = self.keys().index(item)
 
-        if isinstance(item, (str, numbers.Integral)):
+        if isinstance(item, numbers.Integral):
             if item not in self.cache:
                 # Check if we have enough free memory
                 if self._keep_mem_free is not None:
@@ -2539,15 +2532,8 @@ class CacheDataset(Dataset):
             return super().__getitem__(item)
 
     def __iter__(self):
-        if self._has_keys:
-            keys = self.keys()
-        else:
-            # If the dataset doesn't have keys, we have to use integers for
-            # indexing. E.g., ListDataset
-            keys = range(len(self))
-
-        for k in keys:
-            yield self[k]
+        for i in range(len(self)):
+            yield self[i]
 
     def __len__(self):
         return len(self.input_dataset)
