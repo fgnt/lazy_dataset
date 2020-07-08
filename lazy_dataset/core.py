@@ -1142,7 +1142,7 @@ class Dataset:
     def cache(
             self,
             lazy: bool = True,
-            keep_mem_free: Tuple[Union[float, int], str] = None,
+            keep_mem_free: str = None,
     ):
         """
         Caches data in memory. The dataset has to be indexable because the
@@ -1174,10 +1174,10 @@ class Dataset:
             2
 
             Generate lots of data and hope that it doesn't crash
-            >>> ds = new(dict(zip(list(range(10000)), list(range(10000)))))
+            >>> ds = new(list(range(1000)))
             >>> import numpy as np
-            >>> ds = ds.map(lambda x: np.random.randn(1000, 1000, 1000))
-            >>> ds = ds.cache(keep_mem_free=(5, 'GB'))
+            >>> ds = ds.map(lambda x: np.random.randn(1000, 1000))
+            >>> ds = ds.cache(keep_mem_free='5 GB')
             >>> for example in ds:
             ...     pass # ...
 
