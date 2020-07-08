@@ -1194,11 +1194,18 @@ class Dataset:
                 (e.g., "5GB"). Defaults to "8 GB" if lazy=True.
         """
         if lazy:
-            assert self.indexable
+            assert self.indexable, (
+                'Lazy caching is only possible if the input dataset is '
+                'indexable.'
+            )
             return CacheDataset(self, keep_mem_free or "8 GB")
         else:
-            assert not keep_mem_free
-            assert self.indexable or self.ordered
+            assert not keep_mem_free, (
+                'keep_mem_free is not supported for lazy=False'
+            )
+            assert self.indexable or self.ordered, (
+                'Caching is only supported for indexable or ordered datasets.'
+            )
 
             try:
                 self.keys()
@@ -2472,6 +2479,13 @@ class CacheDataset(Dataset):
         else:
             raise ValueError(immutable_warranty)
 
+        try:
+            self.keys()
+        except NotImplementedError:
+            self._has_keys = False
+        else:
+            self._has_keys = True
+
     @property
     def indexable(self) -> bool:
         return self.dataset.indexable
@@ -2498,10 +2512,10 @@ class CacheDataset(Dataset):
             return humanfriendly.parse_size(keep_mem_free, binary=True)
 
     def __getitem__(self, item):
-        if isinstance(item, numbers.Integral):
+        if isinstance(item, numbers.Integral) and self._has_keys:
             item = self.keys()[item]
 
-        if isinstance(item, str):
+        if isinstance(item, (str, numbers.Integral)):
             if item not in self.cache:
                 # Check if we have enough free memory
                 if self._keep_mem_free is not None:
@@ -2523,7 +2537,14 @@ class CacheDataset(Dataset):
             return super().__getitem__(item)
 
     def __iter__(self):
-        for k in self.keys():
+        if self._has_keys:
+            keys = self.keys()
+        else:
+            # If the dataset doesn't have keys, we have to use integers for
+            # indexing. E.g., ListDataset
+            keys = range(len(self))
+
+        for k in keys:
             yield self[k]
 
     def __len__(self):
