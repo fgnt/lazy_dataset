@@ -4,6 +4,7 @@ import lazy_dataset
 import numpy as np
 import psutil
 import mock
+import pytest
 
 
 def gb(x):
@@ -61,11 +62,12 @@ def test_cache_mem_abs():
         next(it)
         assert len(ds.cache) == 1
         available_mem = gb(5)
-        next(it)
+        with pytest.warns(UserWarning, match='Max capacity'):
+            next(it)
         assert len(ds.cache) == 1
 
 
-def test_cache_mem_fraction():
+def test_cache_mem_percent():
     dataset = lazy_dataset.new(dict(zip(map(str, range(100)), range(100))))
 
     available_mem = gb(8)
@@ -84,7 +86,8 @@ def test_cache_mem_fraction():
         next(it)
         assert len(ds.cache) == 1
         available_mem = gb(7)
-        next(it)
+        with pytest.warns(UserWarning, match='Max capacity'):
+            next(it)
         assert len(ds.cache) == 1
 
 
