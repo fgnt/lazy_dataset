@@ -1191,11 +1191,11 @@ class Dataset:
                 "%" or any absolute byte unit (e.g., "B", "GB", "G"). If unit
                 is "%", it keeps <value> percent of the memory free (e.g.,
                 "50%"). If an absolute unit, it keeps that many bytes free
-                (e.g., "5GB")
+                (e.g., "5GB"). Defaults to "8 GB" if lazy=True.
         """
         if lazy:
             assert self.indexable
-            return CacheDataset(self, keep_mem_free)
+            return CacheDataset(self, keep_mem_free or "8 GB")
         else:
             assert not keep_mem_free
             assert self.indexable or self.ordered
