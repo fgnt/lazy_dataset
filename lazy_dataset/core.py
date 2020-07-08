@@ -2451,13 +2451,13 @@ class DynamicBucketDataset(Dataset):
 
 
 class CacheDataset(Dataset):
-    def __init__(self, dataset: Dataset, keep_mem_free=None,
+    def __init__(self, input_dataset: Dataset, keep_mem_free=None,
                  immutable_warranty: str = 'pickle') -> None:
         super().__init__()
-        assert dataset.indexable, (
+        assert input_dataset.indexable, (
             'CacheDataset only works if dataset is indexable!'
         )
-        self.dataset = dataset
+        self.input_dataset = input_dataset
         self.cache = {}
 
         self._keep_mem_free = self._get_memory_size(keep_mem_free)
@@ -2481,7 +2481,7 @@ class CacheDataset(Dataset):
         return self.dataset.ordered
 
     def keys(self) -> list:
-        return self.dataset.keys()
+        return self.input_dataset.keys()
 
     @staticmethod
     def _get_memory_size(keep_mem_free):
@@ -2509,9 +2509,9 @@ class CacheDataset(Dataset):
                     if psutil.virtual_memory().available <= self._keep_mem_free:
                         # Return without writing to cache if there is not enough
                         # free memory
-                        return self.dataset[item]
+                        return self.input_dataset[item]
 
-                self.cache[item] = self._serialize(self.dataset[item])
+                self.cache[item] = self._serialize(self.input_dataset[item])
             return self._deserialize(self.cache[item])
         else:
             # Support for slices etc.
@@ -2522,7 +2522,7 @@ class CacheDataset(Dataset):
             yield self[k]
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.input_dataset)
 
     def copy(self, freeze: bool = False) -> 'Dataset':
         if not freeze:
@@ -2533,7 +2533,7 @@ class CacheDataset(Dataset):
                 'freeze=False!'
             )
         copy = self.__class__(
-            self.dataset.copy(freeze),
+            self.input_dataset.copy(freeze),
             keep_mem_free=self._keep_mem_free,
             immutable_warranty=self.immutable_warranty
         )
@@ -2543,6 +2543,17 @@ class CacheDataset(Dataset):
         # iterating over the dataset
         copy.cache = self.cache
         return copy
+
+    def __str__(self):
+        import humanfriendly
+        if self._keep_mem_free:
+            return (
+                f'{self.__class__.__name__}(keep_free='
+                f'{humanfriendly.format_size(self._keep_mem_free, binary=True)}'
+                f')'
+            )
+        else:
+            return super().__str__()
 
 
 if __name__ == '__main__':
