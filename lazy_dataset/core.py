@@ -9,7 +9,7 @@ import random
 import collections
 
 import numpy as np
-from typing import Optional, Union, Any, List, Dict
+from typing import Optional, Union, Any, List, Dict, Tuple
 
 LOG = logging.getLogger('lazy_dataset')
 
@@ -343,6 +343,13 @@ class Dataset:
     def indexable(self) -> bool:
         raise NotImplementedError(
             f'indexable is not implemented for {self.__class__}.\n'
+            f'self: \n{repr(self)}'
+        )
+
+    @property
+    def ordered(self) -> bool:
+        raise NotImplementedError(
+            f'ordered is not implemented for {self.__class__}.\n'
             f'self: \n{repr(self)}'
         )
 
@@ -1208,6 +1215,81 @@ class Dataset:
         else:
             return apply_fn(self)
 
+    def cache(
+            self,
+            lazy: bool = True,
+            keep_mem_free: str = None,
+    ):
+        """
+        Caches data in memory. The dataset has to be indexable because the
+        cache needs a unique identifier (key) for each example.
+
+        Warnings:
+            This dataset is *not* immutable! It maintains the cache as an
+            instance variable.
+
+            This dataset freezes everything that comes before this dataset!
+            E.g., anything random before applying `.cache` is frozen. Any
+            shuffling has to be applied after caching!
+
+            `keep_mem_free` has no effect, if `lazy=False`! If `lazy=False`,
+            the dataset will always load all data.
+
+        Examples:
+
+            `Dataset.cache` can give a dataset that uses filter excpetions and
+            thus has an unkown effective length the correct length again:
+            >>> ds = new({'a': 1, 'b': 2, 'c': 3, 'd': 4})
+            >>> def m(x):
+            ...     if x % 2:
+            ...         raise FilterException()
+            ...     return x
+            >>> ds = ds.map(m)
+            >>> ds = ds.catch().cache(lazy=False)
+            >>> len(ds)
+            2
+
+            Generate lots of data and hope that it doesn't crash
+            >>> ds = new(list(range(1000)))
+            >>> import numpy as np
+            >>> ds = ds.map(lambda x: np.random.randn(1000, 1000))
+            >>> ds = ds.cache(keep_mem_free='5 GB')
+            >>> for example in ds:
+            ...     pass # ...
+
+        Args:
+            lazy: If `True`, it caches "on the fly" and respects the setting
+                of `keep_mem_free`. If `False`, it immediatly, on invocation
+                of `cache`, loads all examples from the dataset into memory
+                without respecting `keep_mem_free`.
+            keep_mem_free: A human-friendly string containing a value and a
+                unit ("<value><optional space><unit>"). Unit can be either
+                "%" or any absolute byte unit (e.g., "B", "GB", "G"). If unit
+                is "%", it keeps <value> percent of the memory free (e.g.,
+                "50%"). If an absolute unit, it keeps that many bytes free
+                (e.g., "5GB"). Defaults to "8 GB" if lazy=True.
+        """
+        if lazy:
+            assert self.indexable, (
+                'Lazy caching is only possible if the input dataset is '
+                'indexable.'
+            )
+            return CacheDataset(self, keep_mem_free or "8 GB")
+        else:
+            assert not keep_mem_free, (
+                'keep_mem_free is not supported for lazy=False'
+            )
+            assert self.indexable or self.ordered, (
+                'Caching is only supported for indexable or ordered datasets.'
+            )
+
+            try:
+                self.keys()
+            except NotImplementedError:
+                return from_list(list(self))
+            else:
+                return from_dict(dict(self))
+
 
 class DictDataset(Dataset):
     """
@@ -1225,6 +1307,10 @@ class DictDataset(Dataset):
 
     @property
     def indexable(self):
+        return True
+
+    @property
+    def ordered(self):
         return True
 
     def __str__(self):
@@ -1281,6 +1367,10 @@ class ListDataset(Dataset):
     def indexable(self):
         return True
 
+    @property
+    def ordered(self) -> bool:
+        return True
+
     def __str__(self):
         if self.name is None:
             return f'{self.__class__.__name__}(len={len(self)})'
@@ -1334,6 +1424,11 @@ class MapDataset(Dataset):
     @property
     def indexable(self):
         return self.input_dataset.indexable
+
+    @property
+    def ordered(self) -> bool:
+        # This is only true if the mapped function is deterministic!
+        return self.input_dataset.ordered
 
     def __str__(self):
         map_function_str = str(self.map_function)
@@ -1446,6 +1541,10 @@ class CatchExceptionDataset(Dataset):
     def indexable(self):
         return False
 
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
     def __getitem__(self, item):
         if isinstance(item, (str)):
             return self.input_dataset[item]
@@ -1511,6 +1610,10 @@ class PrefetchDataset(Dataset):
     @property
     def indexable(self):
         return False
+
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
 
     def __len__(self):
         if self.catch_filter_exception:
@@ -1599,6 +1702,10 @@ class ReShuffleDataset(Dataset):
     def indexable(self):
         return False
 
+    @property
+    def ordered(self) -> bool:
+        return False
+
     def __len__(self):
         return len(self.input_dataset)
 
@@ -1648,6 +1755,10 @@ class LocalShuffleDataset(Dataset):
 
     @property
     def indexable(self):
+        return False
+
+    @property
+    def ordered(self) -> bool:
         return False
 
     def __len__(self):
@@ -1735,6 +1846,10 @@ class SliceDataset(Dataset):
             self.input_dataset.indexable, self.input_dataset)
         return True
 
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
     _keys = None
 
     def keys(self):
@@ -1806,6 +1921,10 @@ class FilterDataset(Dataset):
     def indexable(self):
         return False
 
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
     def __str__(self):
         return f'{self.__class__.__name__}({self.filter_function})'
 
@@ -1853,6 +1972,10 @@ class ConcatenateDataset(Dataset):
     @property
     def indexable(self):
         return all([ds.indexable for ds in self.input_datasets])
+
+    @property
+    def ordered(self) -> bool:
+        return all(ds.ordered for ds in self.input_datasets)
 
     def __iter__(self):
         for input_dataset in self.input_datasets:
@@ -2056,6 +2179,10 @@ class ZipDataset(Dataset):
     def indexable(self):
         return all([dataset.indexable for dataset in self.input_datasets])
 
+    @property
+    def ordered(self) -> bool:
+        return all(ds.ordered for ds in self.input_datasets)
+
     def __iter__(self):
         for examples in zip(*self.input_datasets):
             yield examples
@@ -2115,6 +2242,10 @@ class KeyZipDataset(Dataset):
     @property
     def indexable(self):
         return all([ds.indexable for ds in self.input_datasets])
+
+    @property
+    def ordered(self) -> bool:
+        return True
 
     def __iter__(self):
         for key in self.keys():
@@ -2204,6 +2335,10 @@ class BatchDataset(Dataset):
     def indexable(self):
         return self.input_dataset.input_dataset
 
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
     def __str__(self):
         return f'{self.__class__.__name__}(batch_size={self.batch_size})'
 
@@ -2261,6 +2396,10 @@ class UnbatchDataset(Dataset):
     @property
     def indexable(self):
         return False
+
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
 
     def __iter__(self):
         for batch in self.input_dataset:
@@ -2427,6 +2566,11 @@ class DynamicBucketDataset(Dataset):
     def indexable(self):
         return False
 
+    @property
+    def ordered(self) -> bool:
+        # This is only true if the bucket is deterministic!
+        return self.input_dataset.ordered
+
     def __iter__(self):
         buckets = list()
         dropped_count = 0
@@ -2471,6 +2615,119 @@ class DynamicBucketDataset(Dataset):
                 dropped_count += len(data)
         if dropped_count > 0:
             print(f'Dropped {dropped_count} examples')
+
+
+class CacheDataset(Dataset):
+    def __init__(self, input_dataset: Dataset, keep_mem_free=None,
+                 immutable_warranty: str = 'pickle') -> None:
+        super().__init__()
+        assert input_dataset.indexable, (
+            'CacheDataset only works if dataset is indexable!'
+        )
+        self.input_dataset = input_dataset
+        self.cache = {}
+
+        self._keep_mem_free = self._get_memory_size(keep_mem_free)
+        self.immutable_warranty = immutable_warranty
+
+        if immutable_warranty == 'pickle':
+            self._serialize = pickle.dumps
+            self._deserialize = pickle.loads
+        elif immutable_warranty == 'copy':
+            self._serialize = lambda x: x
+            self._deserialize = deepcopy
+        else:
+            raise ValueError(immutable_warranty)
+
+    @property
+    def indexable(self) -> bool:
+        return self.input_dataset.indexable
+
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
+    def keys(self) -> list:
+        return self.input_dataset.keys()
+
+    @staticmethod
+    def _get_memory_size(keep_mem_free):
+        if keep_mem_free is None:
+            return None
+
+        if isinstance(keep_mem_free, int):
+            return keep_mem_free
+        elif keep_mem_free.strip().endswith('%'):
+            import psutil
+            value = float(keep_mem_free.strip(' %'))
+            assert 0 <= value <= 100, value
+            return psutil.virtual_memory().total * value / 100
+        else:
+            import humanfriendly
+            return humanfriendly.parse_size(keep_mem_free, binary=True)
+
+    def __getitem__(self, item):
+        if isinstance(item, str):
+            item = self.keys().index(item)
+
+        if isinstance(item, numbers.Integral):
+            if item not in self.cache:
+                # Check if we have enough free memory
+                if self._keep_mem_free is not None:
+                    import psutil
+                    if psutil.virtual_memory().available <= self._keep_mem_free:
+                        # Return without writing to cache if there is not enough
+                        # free memory
+                        import warnings
+                        warnings.warn(
+                            'Max capacity of the in-memory cache is reached. '
+                            'The remaining data will not be cached.'
+                        )
+                        return self.input_dataset[item]
+
+                self.cache[item] = self._serialize(self.input_dataset[item])
+            return self._deserialize(self.cache[item])
+        else:
+            # Support for slices etc.
+            return super().__getitem__(item)
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
+    def __len__(self):
+        return len(self.input_dataset)
+
+    def copy(self, freeze: bool = False) -> 'Dataset':
+        if not freeze:
+            import warnings
+            warnings.warn(
+                'Copying a CacheDataset preserves the cache, i.e., the '
+                'already cached part of the dataset will be frozen even if '
+                'freeze=False!'
+            )
+        copy = self.__class__(
+            self.input_dataset.copy(freeze),
+            keep_mem_free=self._keep_mem_free,
+            immutable_warranty=self.immutable_warranty
+        )
+
+        # We have to share the cache here because otherwise a new cache would
+        # be initialized at every copy and copy is called by prefetch before
+        # iterating over the dataset
+        copy.cache = self.cache
+        return copy
+
+    def __str__(self):
+        import humanfriendly
+        if self._keep_mem_free:
+            return (
+                f'{self.__class__.__name__}(keep_free='
+                f'{humanfriendly.format_size(self._keep_mem_free, binary=True)}'
+                f')'
+            )
+        else:
+            return super().__str__()
 
 
 if __name__ == '__main__':

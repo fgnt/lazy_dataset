@@ -29,6 +29,7 @@ REQUIRED = [
 
 # What packages are optional?
 EXTRAS = {
+    'cache': ['humanfriendly', 'psutil'],
     # 'fancy feature': ['django'],
 }
 
@@ -113,7 +114,10 @@ setup(
     #     'console_scripts': ['mycli=mymodule:cli'],
     # },
     install_requires=REQUIRED,
-    extras_require=EXTRAS,
+    extras_require={
+        **EXTRAS,
+        'all': set().union(*(x for x in EXTRAS.values())),
+    },
     include_package_data=True,
     license='MIT',
     classifiers=[
