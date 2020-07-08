@@ -2488,11 +2488,11 @@ class CacheDataset(Dataset):
 
     @property
     def indexable(self) -> bool:
-        return self.dataset.indexable
+        return self.input_dataset.indexable
 
     @property
     def ordered(self) -> bool:
-        return self.dataset.ordered
+        return self.input_dataset.ordered
 
     def keys(self) -> list:
         return self.input_dataset.keys()
