@@ -2509,6 +2509,11 @@ class CacheDataset(Dataset):
                     if psutil.virtual_memory().available <= self._keep_mem_free:
                         # Return without writing to cache if there is not enough
                         # free memory
+                        import warnings
+                        warnings.warn(
+                            'Max capacity of the in-memory cache is reached. '
+                            'The remaining data will not be cached.'
+                        )
                         return self.input_dataset[item]
 
                 self.cache[item] = self._serialize(self.input_dataset[item])
