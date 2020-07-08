@@ -7,6 +7,7 @@ from copy import deepcopy
 import itertools
 import random
 import collections
+from pathlib import Path
 
 import numpy as np
 from typing import Optional, Union, Any, List, Dict, Tuple
@@ -1224,6 +1225,10 @@ class Dataset:
         Caches data in memory. The dataset has to be indexable because the
         cache needs a unique identifier (key) for each example.
 
+        It is recommended to apply caching after data loading and before any
+        data-multiplying transformations (e.g., STFT) are applied, e.g.,
+        `dataset.map(load_data).cache().map(transform)`.
+
         Warnings:
             This dataset is *not* immutable! It maintains the cache as an
             instance variable.
@@ -1289,6 +1294,55 @@ class Dataset:
                 return from_list(list(self))
             else:
                 return from_dict(dict(self))
+
+    def diskcache(
+            self,
+            cache_dir: Optional[Union[Path, str]] = None,
+            reuse: bool = False, clear: bool = True
+    ) -> 'DiskCacheDataset':
+        """
+        Caches data in a local cache dir using the `diskcache` package. Only
+        works with indexable datasets because caching requires a unique key for
+        each element.
+
+        It is recommended to apply caching after data loading and before any
+        data-multiplying transformations (e.g., STFT) are applied, e.g.,
+        `dataset.map(load_data).diskcache().map(transform)`.
+
+        Examples:
+            >>> ds = new(list(range(10))).diskcache()
+
+        Warnings:
+            Be careful to only enalbe this when you know that the data in
+            `cache_dir` is what you want! Otherwise this option can cause
+            hard-to-find bugs.
+
+            This dataset is *not* immutable! It maintains the cache as an
+            instance variable, possibly even across runs of your script (if
+            `reuse=True`)!
+
+            This dataset freezes everything that comes before this dataset!
+            E.g., anything random before applying `.diskcache` is frozen. Any
+            shuffling has to be applied after caching!
+
+            Make sure to delete unused cache directories!
+
+        Args:
+            cache_dir: Directory to save the cached data. If `None`, it uses
+                "/tmp/<somerandomid>".
+            reuse: If `True`, data found in `cache_dir` is re-used. If `False`,
+                it raises an exception when `cache_dir` exists.
+            clear: If `True`, it tries to clear the cache directory on exit.
+                This works for the usual exit methods (i.e., normal exit,
+                keyboard interrupt) but not reliably for other signals (e.g.,
+                SIGTERM, SIGKILL, SIGSEGV). Clearing on SIGTERM usually works
+                when the signal is handled somewhere in the python code and
+                fails otherwise (Adding
+                `signal.signal(signal.SIGTERM, lambda *X: exit(1))` makes the
+                the clearing process work but might interfere with other parts
+                of the program than try to handle signals).
+        """
+        return DiskCacheDataset(self, cache_dir, reuse, clear)
 
 
 class DictDataset(Dataset):
@@ -2728,6 +2782,132 @@ class CacheDataset(Dataset):
             )
         else:
             return super().__str__()
+
+
+class _DiskCacheWrapper:
+    """
+    Wraps a `diskcache.Cache` and takes care of cleaning up when destroyed.
+    The wrapper is required to support sharing the cache among copies of the
+    dataset.
+    """
+    def __init__(self, cache_dir, reuse, clear):
+        self.clear = clear
+
+        import diskcache
+        if cache_dir is not None and Path(cache_dir).is_dir():
+            if reuse:
+                print(f'Cache dir "{cache_dir}" already exists. Re-using '
+                      f'stored data.')
+            else:
+                raise RuntimeError(
+                    f'Cache dir "{cache_dir}" exists! Either remove it '
+                    f'or set reuse=True.'
+                )
+        self.cache = diskcache.Cache(cache_dir)
+
+    def __del__(self):
+        # This gets called when all references to the cache wrapper are
+        # dropped and the program is still running. This includes normal
+        # termination and keyboard interrupt, but no other signals like
+        # SIGTERM or SIGKILL. Some signals sometimes work if they are handled
+        # within python.
+        self.cache.close()
+        if self.clear:
+            if Path(self.cache.directory).exists():
+                import shutil
+                shutil.rmtree(self.cache.directory)
+
+
+class DiskCacheDataset(Dataset):
+    def __init__(self, input_dataset, cache_dir=None, reuse=True, clear=True,
+                 *, _cache=None):
+        # We have the same assumptions as CacheDataset
+        self.input_dataset = input_dataset
+        assert self.input_dataset.indexable
+        if _cache is None:
+            self.cache = _DiskCacheWrapper(cache_dir, reuse, clear)
+        else:
+            self.cache = _cache
+
+    @property
+    def indexable(self) -> bool:
+        return self.input_dataset.indexable
+
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
+    def keys(self) -> list:
+        return self.input_dataset.keys()
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
+    def __len__(self):
+        return len(self.input_dataset)
+
+    def __getitem__(self, item):
+        if isinstance(item, str):
+            item = self.keys().index(item)
+
+        if isinstance(item, numbers.Integral):
+            # diskcache already provides new copy of the item on every read,
+            # so we don't have to think about immutability of examples
+            if item not in self.cache.cache:
+
+                import shutil
+                import humanfriendly
+                diskusage = shutil.disk_usage(self.cache.cache.directory)
+                if diskusage.free < 5*1024**3:
+                    import warnings
+                    warnings.warn(
+                        f'There is not much space left in the specified cache '
+                        f'dir "{self.cache.cache.directory}"! (total='
+                        f'{humanfriendly.format_size(diskusage.total, binary=True)}'
+                        f', free='
+                        f'{humanfriendly.format_size(diskusage.free, binary=True)}'
+                        f')'
+                    )
+                    if diskusage.free < 1*1024**3:
+                        # Crash if less than 1GB left. It's better to crash
+                        # this process than to crash the whole machine
+                        raise RuntimeError(
+                            f'Not enough space on device! The device that the '
+                            f'cache directory is located on has less than 1GB '
+                            f'space left. You probably want to delete some '
+                            f'files before crashing the machine.'
+                        )
+
+                self.cache.cache[item] = self.input_dataset[item]
+            return self.cache.cache[item]
+        else:
+            # Support for slices etc.
+            return super().__getitem__(item)
+
+    def copy(self, freeze: bool = False) -> 'Dataset':
+        if not freeze:
+            import warnings
+            warnings.warn(
+                'Copying a CacheDataset preserves the cache, i.e., the '
+                'already cached part of the dataset will be frozen even if '
+                'freeze=False!'
+            )
+        # We have to share the cache here because otherwise a new cache would
+        # be initialized at every copy and copy is called by prefetch before
+        # iterating over the dataset
+        copy = self.__class__(
+            self.input_dataset.copy(freeze),
+            _cache=self.cache
+        )
+
+        return copy
+
+    def __str__(self):
+        return (
+            f'{self.__class__.__name__}(cache_dir='
+            f'{self.cache.cache.directory}, reuse={self.cache.reuse})'
+        )
 
 
 if __name__ == '__main__':
