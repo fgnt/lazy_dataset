@@ -2679,7 +2679,7 @@ class CacheDataset(Dataset):
             'CacheDataset only works if dataset is indexable!'
         )
         self.input_dataset = input_dataset
-        self.cache = {}
+        self._cache = {}
 
         self._keep_mem_free = self._get_memory_size(keep_mem_free)
         self.immutable_warranty = immutable_warranty
@@ -2720,27 +2720,36 @@ class CacheDataset(Dataset):
             import humanfriendly
             return humanfriendly.parse_size(keep_mem_free, binary=True)
 
+    def check(self):
+        if self._keep_mem_free is None:
+            return True
+
+        import psutil
+        if psutil.virtual_memory().available <= self._keep_mem_free:
+            # Return without writing to cache if there is not enough
+            # free memory
+            import warnings
+            warnings.warn(
+                'Max capacity of the in-memory cache is reached. '
+                'The remaining data will not be cached.'
+            )
+            return False
+        return True
+
     def __getitem__(self, item):
         if isinstance(item, str):
             item = self.keys().index(item)
 
         if isinstance(item, numbers.Integral):
-            if item not in self.cache:
-                # Check if we have enough free memory
-                if self._keep_mem_free is not None:
-                    import psutil
-                    if psutil.virtual_memory().available <= self._keep_mem_free:
-                        # Return without writing to cache if there is not enough
-                        # free memory
-                        import warnings
-                        warnings.warn(
-                            'Max capacity of the in-memory cache is reached. '
-                            'The remaining data will not be cached.'
-                        )
-                        return self.input_dataset[item]
+            if item not in self._cache:
+                value = self.input_dataset[item]
 
-                self.cache[item] = self._serialize(self.input_dataset[item])
-            return self._deserialize(self.cache[item])
+                if self.check():
+                    self._cache[item] = self._serialize(value)
+            else:
+                value = self._deserialize(self._cache[item])
+
+            return value
         else:
             # Support for slices etc.
             return super().__getitem__(item)
@@ -2769,7 +2778,7 @@ class CacheDataset(Dataset):
         # We have to share the cache here because otherwise a new cache would
         # be initialized at every copy and copy is called by prefetch before
         # iterating over the dataset
-        copy.cache = self.cache
+        copy.cache = self._cache
         return copy
 
     def __str__(self):
@@ -2818,34 +2827,21 @@ class _DiskCacheWrapper:
                 shutil.rmtree(self.cache.directory)
 
 
-class DiskCacheDataset(Dataset):
+class DiskCacheDataset(CacheDataset):
+    """
+    We use the `diskcache` package because it provides a simple interface and
+    is thread-safe and forkable. This means it works with all backends for
+    prefetching.
+    """
     def __init__(self, input_dataset, cache_dir=None, reuse=True, clear=True,
                  *, _cache=None):
         # We have the same assumptions as CacheDataset
         self.input_dataset = input_dataset
         assert self.input_dataset.indexable
         if _cache is None:
-            self.cache = _DiskCacheWrapper(cache_dir, reuse, clear)
+            self._cache = _DiskCacheWrapper(cache_dir, reuse, clear)
         else:
-            self.cache = _cache
-
-    @property
-    def indexable(self) -> bool:
-        return self.input_dataset.indexable
-
-    @property
-    def ordered(self) -> bool:
-        return self.input_dataset.ordered
-
-    def keys(self) -> list:
-        return self.input_dataset.keys()
-
-    def __iter__(self):
-        for i in range(len(self)):
-            yield self[i]
-
-    def __len__(self):
-        return len(self.input_dataset)
+            self._cache = _cache
 
     def __getitem__(self, item):
         if isinstance(item, str):
@@ -2854,16 +2850,16 @@ class DiskCacheDataset(Dataset):
         if isinstance(item, numbers.Integral):
             # diskcache already provides new copy of the item on every read,
             # so we don't have to think about immutability of examples
-            if item not in self.cache.cache:
+            if item not in self._cache.cache:
 
                 import shutil
                 import humanfriendly
-                diskusage = shutil.disk_usage(self.cache.cache.directory)
+                diskusage = shutil.disk_usage(self._cache.cache.directory)
                 if diskusage.free < 5*1024**3:
                     import warnings
                     warnings.warn(
                         f'There is not much space left in the specified cache '
-                        f'dir "{self.cache.cache.directory}"! (total='
+                        f'dir "{self._cache.cache.directory}"! (total='
                         f'{humanfriendly.format_size(diskusage.total, binary=True)}'
                         f', free='
                         f'{humanfriendly.format_size(diskusage.free, binary=True)}'
@@ -2879,8 +2875,8 @@ class DiskCacheDataset(Dataset):
                             f'files before crashing the machine.'
                         )
 
-                self.cache.cache[item] = self.input_dataset[item]
-            return self.cache.cache[item]
+                self._cache.cache[item] = self.input_dataset[item]
+            return self._cache.cache[item]
         else:
             # Support for slices etc.
             return super().__getitem__(item)
@@ -2898,7 +2894,7 @@ class DiskCacheDataset(Dataset):
         # iterating over the dataset
         copy = self.__class__(
             self.input_dataset.copy(freeze),
-            _cache=self.cache
+            _cache=self._cache
         )
 
         return copy
@@ -2906,7 +2902,7 @@ class DiskCacheDataset(Dataset):
     def __str__(self):
         return (
             f'{self.__class__.__name__}(cache_dir='
-            f'{self.cache.cache.directory}, reuse={self.cache.reuse})'
+            f'{self._cache.cache.directory}, reuse={self._cache.reuse})'
         )
 
 

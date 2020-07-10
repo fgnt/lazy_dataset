@@ -58,13 +58,13 @@ def test_cache_mem_abs():
 
         available_mem = gb(6)
         it = iter(ds)
-        assert len(ds.cache) == 0
+        assert len(ds._cache) == 0
         next(it)
-        assert len(ds.cache) == 1
+        assert len(ds._cache) == 1
         available_mem = gb(5)
         with pytest.warns(UserWarning, match='Max capacity'):
             next(it)
-        assert len(ds.cache) == 1
+        assert len(ds._cache) == 1
 
 
 def test_cache_mem_percent():
@@ -82,13 +82,13 @@ def test_cache_mem_percent():
 
         available_mem = gb(9)
         it = iter(ds)
-        assert len(ds.cache) == 0
+        assert len(ds._cache) == 0
         next(it)
-        assert len(ds.cache) == 1
+        assert len(ds._cache) == 1
         available_mem = gb(7)
         with pytest.warns(UserWarning, match='Max capacity'):
             next(it)
-        assert len(ds.cache) == 1
+        assert len(ds._cache) == 1
 
 
 def test_cache_from_ordered_not_indexable():
