@@ -1313,9 +1313,9 @@ class Dataset:
             >>> ds = new(list(range(10))).diskcache()
 
         Warnings:
-            Be careful to only enalbe this when you know that the data in
-            `cache_dir` is what you want! Otherwise this option can cause
-            hard-to-find bugs.
+            Be careful to only enalbe `resue` when you know that the data in
+            `cache_dir` is valid for your dataset! Otherwise this option
+            produces invalid outputs and hard-to-find bugs!
 
             This dataset is *not* immutable! It maintains the cache as an
             instance variable, possibly even across runs of your script (if
@@ -1324,8 +1324,6 @@ class Dataset:
             This dataset freezes everything that comes before this dataset!
             E.g., anything random before applying `.diskcache` is frozen. Any
             shuffling has to be applied after caching!
-
-            Make sure to delete unused cache directories!
 
         Args:
             cache_dir: Directory to save the cached data. If `None`, it uses
@@ -2674,7 +2672,6 @@ class DynamicBucketDataset(Dataset):
 class CacheDataset(Dataset):
     def __init__(self, input_dataset: Dataset, keep_mem_free=None,
                  immutable_warranty: str = 'pickle') -> None:
-        super().__init__()
         assert input_dataset.indexable, (
             'CacheDataset only works if dataset is indexable!'
         )
@@ -2809,8 +2806,8 @@ class _DiskCacheWrapper:
                       f'stored data.')
             else:
                 raise RuntimeError(
-                    f'Cache dir "{cache_dir}" exists! Either remove it '
-                    f'or set reuse=True.'
+                    f'Cache dir "{cache_dir}" already exists! Either remove '
+                    f'it or set reuse=True.'
                 )
         self.cache = diskcache.Cache(cache_dir)
 
