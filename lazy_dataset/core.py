@@ -15,6 +15,15 @@ from typing import Optional, Union, Any, List, Dict, Tuple
 LOG = logging.getLogger('lazy_dataset')
 
 
+def _get_serialize_and_deserialize(immutable_warranty):
+    if immutable_warranty == 'pickle':
+        return pickle.dumps, pickle.loads
+    elif immutable_warranty == 'copy':
+        return lambda x: x, deepcopy
+    else:
+        raise ValueError(immutable_warranty)
+
+
 def new(
         examples: Union[list, dict],
         immutable_warranty: str = 'pickle',
@@ -80,20 +89,9 @@ def from_dict(
         immutable_warranty: str = 'pickle',
         name: str = None,
 ):
-    if immutable_warranty == 'pickle':
-        examples = {
-            k: pickle.dumps(v)
-            for k, v in examples.items()
-        }
-        dataset = DictDataset(examples, name=name)
-        dataset = dataset.map(pickle.loads)
-    elif immutable_warranty == 'copy':
-        dataset = DictDataset(examples, name=name)
-        dataset = dataset.map(deepcopy)
-    else:
-        raise ValueError(immutable_warranty)
-
-    return dataset
+    serialize, deserialize = _get_serialize_and_deserialize(immutable_warranty)
+    examples = {k: serialize(v) for k, v in examples.items()}
+    return DictDataset(examples, name=name).map(deserialize)
 
 
 def from_list(
@@ -102,20 +100,9 @@ def from_list(
         name: str = None,
 ):
     assert isinstance(examples, (tuple, list)), examples
-    if immutable_warranty == 'pickle':
-        examples = [
-            pickle.dumps(example)
-            for example in examples
-        ]
-        dataset = ListDataset(examples, name=name)
-        dataset = dataset.map(pickle.loads)
-    elif immutable_warranty == 'copy':
-        dataset = ListDataset(examples, name=name)
-        dataset = dataset.map(deepcopy)
-    else:
-        raise ValueError(immutable_warranty)
-
-    return dataset
+    serialize, deserialize = _get_serialize_and_deserialize(immutable_warranty)
+    examples = list(map(serialize, examples))
+    return ListDataset(examples, name=name).map(deserialize)
 
 
 def concatenate(*datasets):
@@ -2671,17 +2658,8 @@ class DynamicBucketDataset(Dataset):
 
 class _CacheWrapper:
     def __init__(self, immutable_warranty: str = 'pickle'):
-        self.immutable_warranty = immutable_warranty
-
-        if immutable_warranty == 'pickle':
-            self._serialize = pickle.dumps
-            self._deserialize = pickle.loads
-        elif immutable_warranty == 'copy':
-            self._serialize = lambda x: x
-            self._deserialize = deepcopy
-        else:
-            raise ValueError(immutable_warranty)
-
+        self._serialize, self._deserialize = _get_serialize_and_deserialize(
+            immutable_warranty)
         self.cache = {}
 
     def __getitem__(self, item):
