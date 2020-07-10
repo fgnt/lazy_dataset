@@ -2669,16 +2669,8 @@ class DynamicBucketDataset(Dataset):
             print(f'Dropped {dropped_count} examples')
 
 
-class CacheDataset(Dataset):
-    def __init__(self, input_dataset: Dataset, keep_mem_free=None,
-                 immutable_warranty: str = 'pickle') -> None:
-        assert input_dataset.indexable, (
-            'CacheDataset only works if dataset is indexable!'
-        )
-        self.input_dataset = input_dataset
-        self._cache = {}
-
-        self._keep_mem_free = self._get_memory_size(keep_mem_free)
+class _CacheWrapper:
+    def __init__(self, immutable_warranty: str = 'pickle'):
         self.immutable_warranty = immutable_warranty
 
         if immutable_warranty == 'pickle':
@@ -2689,6 +2681,36 @@ class CacheDataset(Dataset):
             self._deserialize = deepcopy
         else:
             raise ValueError(immutable_warranty)
+
+        self.cache = {}
+
+    def __getitem__(self, item):
+        return self._deserialize(self.cache[item])
+
+    def __setitem__(self, key, value):
+        self.cache[key] = self._serialize(value)
+
+    def __contains__(self, item):
+        return item in self.cache
+
+    def __len__(self):
+        return len(self.cache)
+
+
+class CacheDataset(Dataset):
+    def __init__(self, input_dataset: Dataset, keep_mem_free=None,
+                 immutable_warranty: str = 'pickle', *, _cache=None) -> None:
+        assert input_dataset.indexable, (
+            'CacheDataset only works if dataset is indexable!'
+        )
+        self.input_dataset = input_dataset
+
+        if _cache is not None:
+            self._cache = _cache
+        else:
+            self._cache = _CacheWrapper(immutable_warranty)
+
+        self._keep_mem_free = self._get_memory_size(keep_mem_free)
 
     @property
     def indexable(self) -> bool:
@@ -2738,14 +2760,12 @@ class CacheDataset(Dataset):
             item = self.keys().index(item)
 
         if isinstance(item, numbers.Integral):
-            if item not in self._cache:
-                value = self.input_dataset[item]
-
-                if self.check():
-                    self._cache[item] = self._serialize(value)
+            if item in self._cache:
+                value = self._cache[item]
             else:
-                value = self._deserialize(self._cache[item])
-
+                value = self.input_dataset[item]
+                if self.check():
+                    self._cache[item] = value
             return value
         else:
             # Support for slices etc.
@@ -2766,16 +2786,14 @@ class CacheDataset(Dataset):
                 'already cached part of the dataset will be frozen even if '
                 'freeze=False!'
             )
-        copy = self.__class__(
-            self.input_dataset.copy(freeze),
-            keep_mem_free=self._keep_mem_free,
-            immutable_warranty=self.immutable_warranty
-        )
-
         # We have to share the cache here because otherwise a new cache would
         # be initialized at every copy and copy is called by prefetch before
         # iterating over the dataset
-        copy.cache = self._cache
+        copy = self.__class__(
+            self.input_dataset.copy(freeze),
+            _cache=self._cache
+        )
+
         return copy
 
     def __str__(self):
@@ -2813,6 +2831,18 @@ class _DiskCacheWrapper:
         # default)
         self.cache = diskcache.Cache(cache_dir, eviction_policy='none')
 
+    def __getitem__(self, item):
+        return self.cache[item]
+
+    def __setitem__(self, key, value):
+        self.cache[key] = value
+
+    def __contains__(self, item):
+        return item in self.cache
+
+    def __len__(self):
+        return len(self.cache)
+
     def __del__(self):
         # This gets called when all references to the cache wrapper are
         # dropped and the program is still running. This includes normal
@@ -2842,61 +2872,30 @@ class DiskCacheDataset(CacheDataset):
         else:
             self._cache = _cache
 
-    def __getitem__(self, item):
-        if isinstance(item, str):
-            item = self.keys().index(item)
-
-        if isinstance(item, numbers.Integral):
-            # diskcache already provides new copy of the item on every read,
-            # so we don't have to think about immutability of examples
-            if item not in self._cache.cache:
-
-                import shutil
-                import humanfriendly
-                diskusage = shutil.disk_usage(self._cache.cache.directory)
-                if diskusage.free < 5*1024**3:
-                    import warnings
-                    warnings.warn(
-                        f'There is not much space left in the specified cache '
-                        f'dir "{self._cache.cache.directory}"! (total='
-                        f'{humanfriendly.format_size(diskusage.total, binary=True)}'
-                        f', free='
-                        f'{humanfriendly.format_size(diskusage.free, binary=True)}'
-                        f')'
-                    )
-                    if diskusage.free < 1*1024**3:
-                        # Crash if less than 1GB left. It's better to crash
-                        # this process than to crash the whole machine
-                        raise RuntimeError(
-                            f'Not enough space on device! The device that the '
-                            f'cache directory is located on has less than 1GB '
-                            f'space left. You probably want to delete some '
-                            f'files before crashing the machine.'
-                        )
-
-                self._cache.cache[item] = self.input_dataset[item]
-            return self._cache.cache[item]
-        else:
-            # Support for slices etc.
-            return super().__getitem__(item)
-
-    def copy(self, freeze: bool = False) -> 'Dataset':
-        if not freeze:
+    def check(self):
+        import shutil
+        import humanfriendly
+        diskusage = shutil.disk_usage(self._cache.cache.directory)
+        if diskusage.free < 5 * 1024 ** 3:
             import warnings
             warnings.warn(
-                'Copying a CacheDataset preserves the cache, i.e., the '
-                'already cached part of the dataset will be frozen even if '
-                'freeze=False!'
+                f'There is not much space left in the specified cache '
+                f'dir "{self._cache.cache.directory}"! (total='
+                f'{humanfriendly.format_size(diskusage.total, binary=True)}'
+                f', free='
+                f'{humanfriendly.format_size(diskusage.free, binary=True)}'
+                f')'
             )
-        # We have to share the cache here because otherwise a new cache would
-        # be initialized at every copy and copy is called by prefetch before
-        # iterating over the dataset
-        copy = self.__class__(
-            self.input_dataset.copy(freeze),
-            _cache=self._cache
-        )
-
-        return copy
+            if diskusage.free < 1 * 1024 ** 3:
+                # Crash if less than 1GB left. It's better to crash
+                # this process than to crash the whole machine
+                raise RuntimeError(
+                    f'Not enough space on device! The device that the '
+                    f'cache directory is located on has less than 1GB '
+                    f'space left. You probably want to delete some '
+                    f'files before crashing the machine.'
+                )
+        return True
 
     def __str__(self):
         return (
