@@ -2728,7 +2728,8 @@ class CacheDataset(Dataset):
             import warnings
             warnings.warn(
                 'Max capacity of the in-memory cache is reached. '
-                'The remaining data will not be cached.'
+                'The remaining data will not be cached.',
+                ResourceWarning
             )
             return False
         return True
@@ -2863,7 +2864,7 @@ class DiskCacheDataset(CacheDataset):
                 f'{humanfriendly.format_size(diskusage.total, binary=True)}'
                 f', free='
                 f'{humanfriendly.format_size(diskusage.free, binary=True)}'
-                f')'
+                f')', ResourceWarning
             )
             if diskusage.free < 1 * 1024 ** 3:
                 # Crash if less than 1GB left. It's better to crash

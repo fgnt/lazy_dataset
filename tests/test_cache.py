@@ -34,7 +34,9 @@ def test_cache_call_only_once():
         call_counter[x] += 1
         return x
 
-    dataset = dataset.map(m).cache()
+    # Set keep_mem_free to a small value to allow testing on machines with
+    # less RAM
+    dataset = dataset.map(m).cache(keep_mem_free='1GB')
     for _ in dataset:
         pass
     assert all(v == 1 for v in call_counter.values())
@@ -63,7 +65,7 @@ def test_cache_mem_abs():
         next(it)
         assert len(ds._cache) == 1
         available_mem = gb(5)
-        with pytest.warns(UserWarning, match='Max capacity'):
+        with pytest.warns(ResourceWarning, match='Max capacity'):
             next(it)
         assert len(ds._cache) == 1
 
@@ -87,7 +89,7 @@ def test_cache_mem_percent():
         next(it)
         assert len(ds._cache) == 1
         available_mem = gb(7)
-        with pytest.warns(UserWarning, match='Max capacity'):
+        with pytest.warns(ResourceWarning, match='Max capacity'):
             next(it)
         assert len(ds._cache) == 1
 
