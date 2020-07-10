@@ -2809,7 +2809,9 @@ class _DiskCacheWrapper:
                     f'Cache dir "{cache_dir}" already exists! Either remove '
                     f'it or set reuse=True.'
                 )
-        self.cache = diskcache.Cache(cache_dir)
+        # eviction_policy='none' deactivates the cache size limit (of 1GB by
+        # default)
+        self.cache = diskcache.Cache(cache_dir, eviction_policy='none')
 
     def __del__(self):
         # This gets called when all references to the cache wrapper are
