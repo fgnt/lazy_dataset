@@ -2796,7 +2796,8 @@ class _DiskCacheWrapper:
         self.clear = clear
 
         import diskcache
-        if cache_dir is not None and Path(cache_dir).is_dir():
+        if cache_dir is not None and Path(cache_dir).is_dir() and len(
+                list(Path(cache_dir).glob('*'))) > 0:
             if reuse:
                 print(f'Cache dir "{cache_dir}" already exists. Re-using '
                       f'stored data.')
