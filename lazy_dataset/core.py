@@ -2878,7 +2878,8 @@ class DiskCacheDataset(CacheDataset):
                 # this process than to crash the whole machine
                 raise RuntimeError(
                     f'Not enough space on device! The device that the '
-                    f'cache directory is located on has less than 1GB '
+                    f'cache directory "{self._cache.cache.directory}" '
+                    f'is located on has less than 1GB '
                     f'space left. You probably want to delete some '
                     f'files before crashing the machine.'
                 )
