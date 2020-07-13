@@ -2689,6 +2689,7 @@ class CacheDataset(Dataset):
             self._cache = _CacheWrapper(immutable_warranty)
 
         self._keep_mem_free = self._get_memory_size(keep_mem_free)
+        self._do_cache = True
 
     @property
     def indexable(self) -> bool:
@@ -2721,6 +2722,9 @@ class CacheDataset(Dataset):
         if self._keep_mem_free is None:
             return True
 
+        if not self._do_cache:
+            return False
+
         import psutil
         if psutil.virtual_memory().available <= self._keep_mem_free:
             # Return without writing to cache if there is not enough
@@ -2731,6 +2735,7 @@ class CacheDataset(Dataset):
                 'The remaining data will not be cached.',
                 ResourceWarning
             )
+            self._do_cache = False
             return False
         return True
 
