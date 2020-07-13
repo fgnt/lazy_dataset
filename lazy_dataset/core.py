@@ -2744,13 +2744,14 @@ class CacheDataset(Dataset):
             item = self.keys().index(item)
 
         if isinstance(item, numbers.Integral):
-            if item in self._cache:
+            try:
                 value = self._cache[item]
-            else:
+            except KeyError:
                 value = self.input_dataset[item]
                 if self.check():
                     self._cache[item] = value
-            return value
+            finally:
+                return value
         else:
             # Support for slices etc.
             return super().__getitem__(item)
