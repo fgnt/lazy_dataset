@@ -7,11 +7,21 @@ from copy import deepcopy
 import itertools
 import random
 import collections
+from pathlib import Path
 
 import numpy as np
 from typing import Optional, Union, Any, List, Dict, Tuple
 
 LOG = logging.getLogger('lazy_dataset')
+
+
+def _get_serialize_and_deserialize(immutable_warranty):
+    if immutable_warranty == 'pickle':
+        return pickle.dumps, pickle.loads
+    elif immutable_warranty == 'copy':
+        return lambda x: x, deepcopy
+    else:
+        raise ValueError(immutable_warranty)
 
 
 def new(
@@ -79,20 +89,9 @@ def from_dict(
         immutable_warranty: str = 'pickle',
         name: str = None,
 ):
-    if immutable_warranty == 'pickle':
-        examples = {
-            k: pickle.dumps(v)
-            for k, v in examples.items()
-        }
-        dataset = DictDataset(examples, name=name)
-        dataset = dataset.map(pickle.loads)
-    elif immutable_warranty == 'copy':
-        dataset = DictDataset(examples, name=name)
-        dataset = dataset.map(deepcopy)
-    else:
-        raise ValueError(immutable_warranty)
-
-    return dataset
+    serialize, deserialize = _get_serialize_and_deserialize(immutable_warranty)
+    examples = {k: serialize(v) for k, v in examples.items()}
+    return DictDataset(examples, name=name).map(deserialize)
 
 
 def from_list(
@@ -101,20 +100,9 @@ def from_list(
         name: str = None,
 ):
     assert isinstance(examples, (tuple, list)), examples
-    if immutable_warranty == 'pickle':
-        examples = [
-            pickle.dumps(example)
-            for example in examples
-        ]
-        dataset = ListDataset(examples, name=name)
-        dataset = dataset.map(pickle.loads)
-    elif immutable_warranty == 'copy':
-        dataset = ListDataset(examples, name=name)
-        dataset = dataset.map(deepcopy)
-    else:
-        raise ValueError(immutable_warranty)
-
-    return dataset
+    serialize, deserialize = _get_serialize_and_deserialize(immutable_warranty)
+    examples = list(map(serialize, examples))
+    return ListDataset(examples, name=name).map(deserialize)
 
 
 def concatenate(*datasets):
@@ -1224,6 +1212,10 @@ class Dataset:
         Caches data in memory. The dataset has to be indexable because the
         cache needs a unique identifier (key) for each example.
 
+        It is recommended to apply caching after data loading and before any
+        data-multiplying transformations (e.g., STFT) are applied, e.g.,
+        `dataset.map(load_data).cache().map(transform)`.
+
         Warnings:
             This dataset is *not* immutable! It maintains the cache as an
             instance variable.
@@ -1289,6 +1281,54 @@ class Dataset:
                 return from_list(list(self))
             else:
                 return from_dict(dict(self))
+
+    def diskcache(
+            self,
+            cache_dir: Optional[Union[Path, str]] = None,
+            reuse: bool = False, clear: bool = True
+    ) -> 'DiskCacheDataset':
+        """
+        Caches data in a local cache dir using the `diskcache` package. Only
+        works with indexable datasets because caching requires a unique key for
+        each element.
+
+        It is recommended to apply caching after data loading and before any
+        data-multiplying transformations (e.g., STFT) are applied, e.g.,
+        `dataset.map(load_data).diskcache().map(transform)` to minimize the
+        cache size.
+
+        Examples:
+            >>> ds = new(list(range(10))).diskcache()
+
+        Warnings:
+            Be careful to only enalbe `resue` when you know that the data in
+            `cache_dir` is valid for your dataset! Otherwise this option
+            produces invalid outputs and hard-to-find bugs!
+
+            This dataset is *not* immutable! It maintains the cache as an
+            instance variable, possibly even across runs of your script (if
+            `reuse=True`)!
+
+            This dataset freezes everything that comes before this dataset!
+            E.g., anything random before applying `.diskcache` is frozen. Any
+            shuffling has to be applied after caching!
+
+        Args:
+            cache_dir: Directory to save the cached data. If `None`, it uses
+                "/tmp/<somerandomid>".
+            reuse: If `True`, data found in `cache_dir` is re-used. If `False`,
+                it raises an exception when `cache_dir` exists.
+            clear: If `True`, it tries to clear the cache directory on exit.
+                This works for the usual exit methods (i.e., normal exit,
+                keyboard interrupt) but not reliably for other signals (e.g.,
+                SIGTERM, SIGKILL, SIGSEGV). Clearing on SIGTERM usually works
+                when the signal is handled somewhere in the python code and
+                fails otherwise (Adding
+                `signal.signal(signal.SIGTERM, lambda *x: exit(1))` makes the
+                the clearing process work but might interfere with other parts
+                of the program than try to handle signals).
+        """
+        return DiskCacheDataset(self, cache_dir, reuse, clear)
 
 
 class DictDataset(Dataset):
@@ -2617,27 +2657,40 @@ class DynamicBucketDataset(Dataset):
             print(f'Dropped {dropped_count} examples')
 
 
+class _CacheWrapper:
+    def __init__(self, immutable_warranty: str = 'pickle'):
+        self._serialize, self._deserialize = _get_serialize_and_deserialize(
+            immutable_warranty)
+        self.cache = {}
+
+    def __getitem__(self, item):
+        return self._deserialize(self.cache[item])
+
+    def __setitem__(self, key, value):
+        self.cache[key] = self._serialize(value)
+
+    def __contains__(self, item):
+        return item in self.cache
+
+    def __len__(self):
+        return len(self.cache)
+
+
 class CacheDataset(Dataset):
     def __init__(self, input_dataset: Dataset, keep_mem_free=None,
-                 immutable_warranty: str = 'pickle') -> None:
-        super().__init__()
+                 immutable_warranty: str = 'pickle', *, _cache=None) -> None:
         assert input_dataset.indexable, (
             'CacheDataset only works if dataset is indexable!'
         )
         self.input_dataset = input_dataset
-        self.cache = {}
+
+        if _cache is not None:
+            self._cache = _cache
+        else:
+            self._cache = _CacheWrapper(immutable_warranty)
 
         self._keep_mem_free = self._get_memory_size(keep_mem_free)
-        self.immutable_warranty = immutable_warranty
-
-        if immutable_warranty == 'pickle':
-            self._serialize = pickle.dumps
-            self._deserialize = pickle.loads
-        elif immutable_warranty == 'copy':
-            self._serialize = lambda x: x
-            self._deserialize = deepcopy
-        else:
-            raise ValueError(immutable_warranty)
+        self._do_cache = True
 
     @property
     def indexable(self) -> bool:
@@ -2666,27 +2719,40 @@ class CacheDataset(Dataset):
             import humanfriendly
             return humanfriendly.parse_size(keep_mem_free, binary=True)
 
+    def check(self):
+        if self._keep_mem_free is None:
+            return True
+
+        if not self._do_cache:
+            return False
+
+        import psutil
+        if psutil.virtual_memory().available <= self._keep_mem_free:
+            # Return without writing to cache if there is not enough
+            # free memory
+            import warnings
+            warnings.warn(
+                'Max capacity of the in-memory cache is reached. '
+                'The remaining data will not be cached.',
+                ResourceWarning
+            )
+            self._do_cache = False
+            return False
+        return True
+
     def __getitem__(self, item):
         if isinstance(item, str):
             item = self.keys().index(item)
 
         if isinstance(item, numbers.Integral):
-            if item not in self.cache:
-                # Check if we have enough free memory
-                if self._keep_mem_free is not None:
-                    import psutil
-                    if psutil.virtual_memory().available <= self._keep_mem_free:
-                        # Return without writing to cache if there is not enough
-                        # free memory
-                        import warnings
-                        warnings.warn(
-                            'Max capacity of the in-memory cache is reached. '
-                            'The remaining data will not be cached.'
-                        )
-                        return self.input_dataset[item]
-
-                self.cache[item] = self._serialize(self.input_dataset[item])
-            return self._deserialize(self.cache[item])
+            try:
+                value = self._cache[item]
+            except KeyError:
+                value = self.input_dataset[item]
+                if self.check():
+                    self._cache[item] = value
+            finally:
+                return value
         else:
             # Support for slices etc.
             return super().__getitem__(item)
@@ -2706,16 +2772,14 @@ class CacheDataset(Dataset):
                 'already cached part of the dataset will be frozen even if '
                 'freeze=False!'
             )
-        copy = self.__class__(
-            self.input_dataset.copy(freeze),
-            keep_mem_free=self._keep_mem_free,
-            immutable_warranty=self.immutable_warranty
-        )
-
         # We have to share the cache here because otherwise a new cache would
         # be initialized at every copy and copy is called by prefetch before
         # iterating over the dataset
-        copy.cache = self.cache
+        copy = self.__class__(
+            self.input_dataset.copy(freeze),
+            _cache=self._cache
+        )
+
         return copy
 
     def __str__(self):
@@ -2728,6 +2792,104 @@ class CacheDataset(Dataset):
             )
         else:
             return super().__str__()
+
+
+class _DiskCacheWrapper:
+    """
+    Wraps a `diskcache.Cache` and takes care of cleaning up when destroyed.
+    The wrapper is required to support sharing the cache among copies of the
+    dataset.
+    """
+    def __init__(self, cache_dir, reuse, clear):
+        self.clear = clear
+
+        import diskcache
+        if cache_dir is not None and Path(cache_dir).is_dir() and len(
+                list(Path(cache_dir).glob('*'))) > 0:
+            if reuse:
+                print(f'Cache dir "{cache_dir}" already exists. Re-using '
+                      f'stored data.')
+            else:
+                raise RuntimeError(
+                    f'Cache dir "{cache_dir}" already exists! Either remove '
+                    f'it or set reuse=True.'
+                )
+        # eviction_policy='none' deactivates the cache size limit (of 1GB by
+        # default)
+        self.cache = diskcache.Cache(cache_dir, eviction_policy='none')
+
+    def __getitem__(self, item):
+        return self.cache[item]
+
+    def __setitem__(self, key, value):
+        self.cache[key] = value
+
+    def __contains__(self, item):
+        return item in self.cache
+
+    def __len__(self):
+        return len(self.cache)
+
+    def __del__(self):
+        # This gets called when all references to the cache wrapper are
+        # dropped and the program is still running. This includes normal
+        # termination and keyboard interrupt, but no other signals like
+        # SIGTERM or SIGKILL. Some signals sometimes work if they are handled
+        # within python.
+        self.cache.close()
+        if self.clear:
+            if Path(self.cache.directory).exists():
+                import shutil
+                shutil.rmtree(self.cache.directory)
+
+
+class DiskCacheDataset(CacheDataset):
+    """
+    We use the `diskcache` package because it provides a simple interface and
+    is thread-safe and forkable. This means it works with all backends for
+    prefetching.
+    """
+    def __init__(self, input_dataset, cache_dir=None, reuse=True, clear=True,
+                 *, _cache=None):
+        # We have the same assumptions as CacheDataset
+        self.input_dataset = input_dataset
+        assert self.input_dataset.indexable
+        if _cache is None:
+            self._cache = _DiskCacheWrapper(cache_dir, reuse, clear)
+        else:
+            self._cache = _cache
+
+    def check(self):
+        import shutil
+        import humanfriendly
+        diskusage = shutil.disk_usage(self._cache.cache.directory)
+        if diskusage.free < 5 * 1024 ** 3:
+            import warnings
+            warnings.warn(
+                f'There is not much space left in the specified cache '
+                f'dir "{self._cache.cache.directory}"! (total='
+                f'{humanfriendly.format_size(diskusage.total, binary=True)}'
+                f', free='
+                f'{humanfriendly.format_size(diskusage.free, binary=True)}'
+                f')', ResourceWarning
+            )
+            if diskusage.free < 1 * 1024 ** 3:
+                # Crash if less than 1GB left. It's better to crash
+                # this process than to crash the whole machine
+                raise RuntimeError(
+                    f'Not enough space on device! The device that the '
+                    f'cache directory "{self._cache.cache.directory}" '
+                    f'is located on has less than 1GB '
+                    f'space left. You probably want to delete some '
+                    f'files before crashing the machine.'
+                )
+        return True
+
+    def __str__(self):
+        return (
+            f'{self.__class__.__name__}(cache_dir='
+            f'{self._cache.cache.directory}, reuse={self._cache.reuse})'
+        )
 
 
 if __name__ == '__main__':
