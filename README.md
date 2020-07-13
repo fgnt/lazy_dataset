@@ -23,6 +23,8 @@ Supported transformations:
  - `dataset.sort(key_fn, sort_fn=sorted)`: Sorts the examples depending on the values `key_fn(example)` ([list.sort](https://docs.python.org/3/library/stdtypes.html#list.sort))
  - `dataset.batch(batch_size, drop_last=False)`: Batches `batch_size` examples together as a list. Usually followed by a map ([tensorflow.data.Dataset.batch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch))
  - `dataset.random_choice()`: Get a random example ([numpy.random.choice](https://docs.scipy.org/doc/numpy/reference/generated/numpy.random.choice.html))
+ - `dataset.cache()`: Cache in RAM (similar to ESPnet's `keep_all_data_on_mem`)
+ - `dataset.diskcache()`: Cache to a cache directory on the local filesystem (useful in clusters network slow filesystems)
  - ...
 
 

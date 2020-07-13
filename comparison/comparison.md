@@ -19,6 +19,7 @@ from torch.utils.data import DataLoader as TorchDataLoader
 |    5    | Sort by value | yes | no |
 |    6    | Draw random example | yes | no |
 |    7    | Unbatch | yes | no |
+|         | Automatic caching (in RAM and on disk) | yes | no |
 
 ## Examples
 1. Dataset
