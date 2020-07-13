@@ -1294,7 +1294,8 @@ class Dataset:
 
         It is recommended to apply caching after data loading and before any
         data-multiplying transformations (e.g., STFT) are applied, e.g.,
-        `dataset.map(load_data).diskcache().map(transform)`.
+        `dataset.map(load_data).diskcache().map(transform)` to minimize the
+        cache size.
 
         Examples:
             >>> ds = new(list(range(10))).diskcache()
@@ -1323,7 +1324,7 @@ class Dataset:
                 SIGTERM, SIGKILL, SIGSEGV). Clearing on SIGTERM usually works
                 when the signal is handled somewhere in the python code and
                 fails otherwise (Adding
-                `signal.signal(signal.SIGTERM, lambda *X: exit(1))` makes the
+                `signal.signal(signal.SIGTERM, lambda *x: exit(1))` makes the
                 the clearing process work but might interfere with other parts
                 of the program than try to handle signals).
         """
