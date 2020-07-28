@@ -7,7 +7,7 @@ cache: pip
 install:
   - pip install pytest coverage pytest-cov
   - pip install codecov  # https://blog.travis-ci.com/2019-08-07-extensive-python-testing-on-travis-ci
-  - pip install -e .
+  - pip install -e .[all]
 
 script:
   - pytest --doctest-modules tests/ lazy_dataset/ --cov=lazy_dataset
