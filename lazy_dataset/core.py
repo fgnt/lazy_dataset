@@ -2130,12 +2130,12 @@ class IntersperseDataset(Dataset):
         assert len(self.input_datasets) >= 1, (f'You have to provide at least '
                                                f'one dataset.'
                                                f'\n{self.input_datasets}')
+        assert all([len(dataset) > 0 for dataset in self.input_datasets])
         self.order = sorted([
             ((example_index + 1) / len(dataset), dataset_index, example_index)
             for dataset_index, dataset in enumerate(input_datasets)
             for example_index in range(len(dataset))
         ])
-        assert all([dataset.indexable for dataset in self.input_datasets])
 
     def copy(self, freeze=False):
         return self.__class__(
@@ -2169,11 +2169,12 @@ class IntersperseDataset(Dataset):
 
     @property
     def indexable(self):
-        return True
+        return all([dataset.indexable for dataset in self.input_datasets])
 
     def __iter__(self):
-        for _, dataset_idx, example_idx in self.order:
-            yield self.input_datasets[dataset_idx][example_idx]
+        iterators = [iter(ds) for ds in self.input_datasets]
+        for _, dataset_idx, _ in self.order:
+            yield next(iterators[dataset_idx])
 
     def __len__(self):
         return sum([len(i) for i in self.input_datasets])
