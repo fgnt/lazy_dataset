@@ -7,42 +7,6 @@ import copy
 import lazy_dataset
 
 
-def merge_database_dicts(*database_dicts):
-    # Copy to prevent writes to the original dict
-    result = copy.deepcopy(database_dicts[0])
-
-    for database_dict in database_dicts[1:]:
-        assert not set(database_dict.keys()) - {'datasets', 'alias'}, (
-            f'All but the first database are only allowed to have keys'
-            f'"datasets" and "alias".'
-        )
-
-        # Get dataset names to check for duplicates
-        dataset_names = set(result['datasets'].keys()) | set(
-            result.get('alias', {}).keys())
-
-        # Check and update "datasets"
-        duplicate_keys = set(database_dict['datasets'].keys()).intersection(
-            dataset_names)
-        assert not duplicate_keys, (
-            f'Found duplicate dataset names in databases! {duplicate_keys}'
-        )
-        result['datasets'].update(database_dict['datasets'])
-
-        # Check and update "alias"
-        if 'alias' in database_dict:
-            duplicate_keys = set(database_dict['alias'].keys()).intersection(
-                dataset_names)
-            assert not duplicate_keys, (
-                f'Found duplicate alias names in databases! '
-                f'{duplicate_keys}'
-            )
-
-            result['alias'].update(database_dict['alias'])
-
-    return result
-
-
 class Database:
     """Base class for databases.
 
@@ -242,7 +206,7 @@ class DictDatabase(Database):
         Args:
             database_dict: A pickle serializeable database dictionary.
         """
-        self._data = merge_database_dicts(*database_dict)
+        self._data = _merge_database_dicts(*database_dict)
         super().__init__()
 
     @property
@@ -267,7 +231,7 @@ class JsonDatabase(Database):
     @property
     def data(self):
         if self._data is None:
-            self._data = merge_database_dicts(*[
+            self._data = _merge_database_dicts(*[
                 json.loads(Path(path).expanduser().read_text())
                 for path in self._json_path
             ])
@@ -276,3 +240,39 @@ class JsonDatabase(Database):
 
     def __repr__(self):
         return f'{type(self).__name__}({self._json_path!r})'
+
+
+def _merge_database_dicts(*database_dicts):
+    # Copy to prevent writes to the original dict
+    result = copy.deepcopy(database_dicts[0])
+
+    for database_dict in database_dicts[1:]:
+        assert not set(database_dict.keys()) - {'datasets', 'alias'}, (
+            f'All but the first database are only allowed to have keys'
+            f'"datasets" and "alias".'
+        )
+
+        # Get dataset names to check for duplicates
+        dataset_names = set(result['datasets'].keys()) | set(
+            result.get('alias', {}).keys())
+
+        # Check and update "datasets"
+        duplicate_keys = set(database_dict['datasets'].keys()).intersection(
+            dataset_names)
+        assert not duplicate_keys, (
+            f'Found duplicate dataset names in databases! {duplicate_keys}'
+        )
+        result['datasets'].update(database_dict['datasets'])
+
+        # Check and update "alias"
+        if 'alias' in database_dict:
+            duplicate_keys = set(database_dict['alias'].keys()).intersection(
+                dataset_names)
+            assert not duplicate_keys, (
+                f'Found duplicate alias names in databases! '
+                f'{duplicate_keys}'
+            )
+
+            result['alias'].update(database_dict['alias'])
+
+    return result
