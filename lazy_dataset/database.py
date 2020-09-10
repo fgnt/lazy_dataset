@@ -2,8 +2,45 @@ import json
 import weakref
 from pathlib import Path
 import typing
+import copy
 
 import lazy_dataset
+
+
+def merge_database_dicts(*database_dicts):
+    # Copy to prevent writes to the original dict
+    result = copy.deepcopy(database_dicts[0])
+
+    for database_dict in database_dicts[1:]:
+        assert not set(database_dict.keys()) - {'datasets', 'alias'}, (
+            f'All but the first database are only allowed to have keys'
+            f'"datasets" and "alias".'
+        )
+
+        # Get dataset names to check for duplicates
+        dataset_names = set(result['datasets'].keys()) | set(
+            result.get('alias', {}).keys())
+
+        # Check and update "datasets"
+        duplicate_keys = set(database_dict['datasets'].keys()).intersection(
+            dataset_names)
+        assert not duplicate_keys, (
+            f'Found duplicate dataset names in databases! {duplicate_keys}'
+        )
+        result['datasets'].update(database_dict['datasets'])
+
+        # Check and update "alias"
+        if 'alias' in database_dict:
+            duplicate_keys = set(database_dict['alias'].keys()).intersection(
+                dataset_names)
+            assert not duplicate_keys, (
+                f'Found duplicate alias names in databases! '
+                f'{duplicate_keys}'
+            )
+
+            result['alias'].update(database_dict['alias'])
+
+    return result
 
 
 class Database:
@@ -198,14 +235,14 @@ class Database:
 
 
 class DictDatabase(Database):
-    def __init__(self, database_dict: dict):
+    def __init__(self, *database_dict: dict):
         """
         A simple database class intended to hold a given database_dict.
 
         Args:
             database_dict: A pickle serializeable database dictionary.
         """
-        self._data = database_dict
+        self._data = merge_database_dicts(*database_dict)
         super().__init__()
 
     @property
@@ -230,42 +267,10 @@ class JsonDatabase(Database):
     @property
     def data(self):
         if self._data is None:
-            paths = [Path(p).expanduser() for p in self._json_path]
-
-            with paths[0].open() as fd:
-                self._data = json.load(fd)
-
-            for path in paths[1:]:
-                with path.open() as fd:
-                    data = json.load(fd)
-
-                assert not set(data.keys()) - {'datasets', 'alias'}, (
-                    f'All but the first JSON are only allowed to have keys'
-                    f'"datasets" and "alias". {path}'
-                )
-
-                # Get dataset names to check for duplicates
-                dataset_names = set(self._data['datasets'].keys()) | set(
-                    self._data.get('alias', {}).keys())
-
-                # Check and update "datasets"
-                duplicate_keys = set(data['datasets'].keys()).intersection(
-                    dataset_names)
-                assert not duplicate_keys, (
-                    f'Found duplicate dataset names in JSONs! {duplicate_keys}'
-                )
-                self._data['datasets'].update(data['datasets'])
-
-                # Check and update "alias"
-                if 'alias' in data:
-                    duplicate_keys = set(data['alias'].keys()).intersection(
-                        dataset_names)
-                    assert not duplicate_keys, (
-                        f'Found duplicate alias names in JSONs! '
-                        f'{duplicate_keys}'
-                    )
-
-                    self._data['alias'].update(data['alias'])
+            self._data = merge_database_dicts(*[
+                json.loads(Path(path).expanduser().read_text())
+                for path in self._json_path
+            ])
 
         return self._data
 
