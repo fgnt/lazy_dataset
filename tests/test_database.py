@@ -1,7 +1,12 @@
 import unittest
+from pathlib import Path
+
+import pytest
 
 import lazy_dataset
-from lazy_dataset.database import DictDatabase
+from lazy_dataset.database import DictDatabase, JsonDatabase
+import tempfile
+import json
 
 
 class DatasetTest(unittest.TestCase):
@@ -14,9 +19,21 @@ class DatasetTest(unittest.TestCase):
                 ),
                 test=dict(
                     c=dict(example_id='c')
-                )
+                ),
+                alias=dict(all=['train', 'test'])
             ),
             meta=dict()
+        )
+        self.json2 = dict(
+            datasets=dict(
+                train2=dict(
+                    a=dict(example_id='a'),
+                    b=dict(example_id='b')
+                ),
+                test2=dict(
+                    c=dict(example_id='c')
+                )
+            )
         )
         # self.temp_directory = Path(tempfile.mkdtemp())
         # self.json_path = self.temp_directory / 'db.json'
@@ -250,6 +267,41 @@ class DatasetTest(unittest.TestCase):
             [ex['example_id'] for ex in ds],
             example_ids
         )
+
+    def test_dict_database_multiple(self):
+        db = DictDatabase(self.json, self.json2)
+        assert len(db.dataset_names) == 5
+
+        with pytest.raises(AssertionError):
+            # Test metadata check
+            DictDatabase(self.json2, self.json)
+
+        with pytest.raises(AssertionError):
+            # Test duplicate dataset name check
+            DictDatabase(self.json, self.json)
+
+    def test_json_database_multiple(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            d1_path = tmpdir / 'd1.json'
+            with d1_path.open('w') as fd:
+                json.dump(self.json, fd)
+
+            d2_path = tmpdir / 'd2.json'
+            with d2_path.open('w') as fd:
+                json.dump(self.json2, fd)
+
+            db = JsonDatabase(d1_path, d2_path)
+            assert len(db.dataset_names) == 5
+
+            with pytest.raises(AssertionError):
+                # Test metadata check
+                _ = JsonDatabase(d2_path, d1_path).dataset_names
+
+            with pytest.raises(AssertionError):
+                # Test duplicate dataset name check
+                _ = JsonDatabase(d1_path, d1_path).dataset_names
 
 
 
