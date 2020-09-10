@@ -176,8 +176,8 @@ class Database:
             return lazy_dataset.concatenate(*datasets)
         else:
             raise TypeError(
-                'Argument type {type(name)} of {name} is not allowed!'
-                'Expected are str, list or tuple.'
+                f'Argument type {type(name)} of {name} is not allowed!'
+                f'Expected are str, list or tuple.'
             )
 
         # Resulting dataset is immutable anyway due to pickle in
@@ -237,12 +237,35 @@ class JsonDatabase(Database):
 
             for path in paths[1:]:
                 with path.open() as fd:
-                    dataset = json.load(fd)['datasets']
-                    for k, v in dataset.items():
-                        assert k not in self._data['datasets'], (
-                            f'Found duplicate datasets in JSONs! {k}'
-                        )
-                        self._data['datasets'][k] = v
+                    data = json.load(fd)
+
+                assert not set(data.keys()) - {'datasets', 'alias'}, (
+                    f'All but the first JSON are only allowed to have keys'
+                    f'"datasets" and "alias". {path}'
+                )
+
+                # Get dataset names to check for duplicates
+                dataset_names = set(self._data['datasets'].keys()) | set(
+                    self._data.get('alias', {}).keys())
+
+                # Check and update "datasets"
+                duplicate_keys = set(data['datasets'].keys()).intersection(
+                    dataset_names)
+                assert not duplicate_keys, (
+                    f'Found duplicate dataset names in JSONs! {duplicate_keys}'
+                )
+                self._data['datasets'].update(data['datasets'])
+
+                # Check and update "alias"
+                if 'alias' in data:
+                    duplicate_keys = set(data['alias'].keys()).intersection(
+                        dataset_names)
+                    assert not duplicate_keys, (
+                        f'Found duplicate alias names in JSONs! '
+                        f'{duplicate_keys}'
+                    )
+
+                    self._data['alias'].update(data['alias'])
 
         return self._data
 
