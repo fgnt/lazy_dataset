@@ -214,13 +214,14 @@ class DictDatabase(Database):
 
 
 class JsonDatabase(Database):
-    def __init__(self, json_path: [str, Path]):
+    def __init__(self, *json_path: [str, Path]):
         """
 
         Args:
-            json_path: path to database JSON
+            json_path: One or multiple paths to database JSONs
 
         """
+        assert len(json_path) > 0, 'At least one database JSON is required!'
         self._json_path = json_path
         super().__init__()
 
@@ -229,10 +230,20 @@ class JsonDatabase(Database):
     @property
     def data(self):
         if self._data is None:
-            path = Path(self._json_path).expanduser()
+            paths = [Path(p).expanduser() for p in self._json_path]
 
-            with path.open() as fd:
+            with paths[0].open() as fd:
                 self._data = json.load(fd)
+
+            for path in paths[1:]:
+                with path.open() as fd:
+                    dataset = json.load(fd)['datasets']
+                    for k, v in dataset.items():
+                        assert k not in self._data['datasets'], (
+                            f'Found duplicate datasets in JSONs! {k}'
+                        )
+                        self._data['datasets'][k] = v
+
         return self._data
 
     def __repr__(self):
