@@ -206,6 +206,10 @@ class DictDatabase(Database):
         Args:
             database_dict: A pickle serializeable database dictionary.
         """
+        if len(database_dict) == 1 and isinstance(
+                database_dict[0], (list, tuple)):
+            database_dict = database_dict[0]
+        assert len(database_dict) > 0, 'At least one database dict is required'
         self._data = _merge_database_dicts(*database_dict)
         super().__init__()
 
@@ -219,9 +223,13 @@ class JsonDatabase(Database):
         """
 
         Args:
-            json_path: One or multiple paths to database JSONs
+            json_path: One or multiple paths to database JSONs. Supports both
+                `JsonDatabase('json1.json', 'json2.json')` and
+                `JsonDatabase(['json1.json', 'json2.json')`.
 
         """
+        if len(json_path) == 1 and isinstance(json_path[0], (list, tuple)):
+            json_path = json_path[0]
         assert len(json_path) > 0, 'At least one database JSON is required!'
         self._json_path = json_path
         super().__init__()
