@@ -1,6 +1,8 @@
 # lazy_dataset
 
 [![Build Status](https://travis-ci.org/fgnt/lazy_dataset.svg?branch=master)](https://travis-ci.org/fgnt/lazy_dataset)
+![Build GH Actions](https://github.com/fgnt/lazy_dataset/workflows/.github/workflows/run_python_tests.yml/badge.svg)
+[![codecov.io](https://codecov.io/github/fgnt/lazy_dataset/coverage.svg?branch=master)](https://codecov.io/github/fgnt/lazy_dataset?branch=master)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/fgnt/lazy_dataset/blob/master/LICENSE)
 
 Lazy_dataset is a helper to deal with large datasets that do not fit into memory.
