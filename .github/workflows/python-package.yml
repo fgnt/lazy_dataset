@@ -39,5 +39,5 @@ jobs:
       run: |
         pytest
       env:
-        OMP_NUM_THREADS=1
-        MKL_NUM_THREADS=1
+        OMP_NUM_THREADS: 1
+        MKL_NUM_THREADS: 1
