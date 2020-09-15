@@ -30,7 +30,7 @@ REQUIRED = [
 # What packages are optional?
 EXTRAS = {
     'cache': ['humanfriendly', 'psutil', 'diskcache'],
-    # 'fancy feature': ['django'],
+    'test': ['mock'],
 }
 
 # The rest you shouldn't have to touch too much :)
