@@ -24,7 +24,7 @@ VERSION = '0.0.9'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
-    # 'requests', 'maya', 'records',
+    'numpy',
 ]
 
 # What packages are optional?
