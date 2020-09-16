@@ -212,7 +212,12 @@ class DictDatabase(Database):
             database_dict: A pickle serializeable database dictionary.
         """
         if isinstance(database_dict, (list, tuple)):
-            assert not database_dicts
+            assert not database_dicts, (
+                f'Passing multiple lists of dicts is not supported. '
+                f'Use either DictDatabase([dict1, dict2, ...]) or '
+                f'DictDatabase(dict1, dict2, ...).',
+                database_dict, database_dicts
+            )
         else:
             database_dict = [database_dict] + list(database_dicts)
         assert len(database_dict) > 0, 'At least one database dict is required'
@@ -242,7 +247,12 @@ class JsonDatabase(Database):
 
         """
         if isinstance(json_path, (list, tuple)):
-            assert not json_paths
+            assert not json_paths, (
+                f'Passing multiple lists of json paths is not supported. '
+                f'Use either JsonDatabase(["json1.json", "json2.json", ...]) '
+                f'or JsonDatabase("json1.json", "json2.json", ...).',
+                json_path, json_paths
+            )
             self._json_path = list(json_path)
         else:
             self._json_path = [json_path] + list(json_paths)
