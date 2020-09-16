@@ -199,16 +199,22 @@ class Database:
 
 
 class DictDatabase(Database):
-    def __init__(self, *database_dict: dict):
+    def __init__(
+            self,
+            database_dict: typing.Union[
+                dict, typing.List[dict], typing.Tuple[dict]],
+            *database_dicts: dict,
+    ):
         """
         A simple database class intended to hold a given database_dict.
 
         Args:
             database_dict: A pickle serializeable database dictionary.
         """
-        if len(database_dict) == 1 and isinstance(
-                database_dict[0], (list, tuple)):
-            database_dict = database_dict[0]
+        if isinstance(database_dict, (list, tuple)):
+            assert not database_dicts
+        else:
+            database_dict = [database_dict] + list(database_dicts)
         assert len(database_dict) > 0, 'At least one database dict is required'
         self._data = _merge_database_dicts(*database_dict)
         super().__init__()
@@ -219,7 +225,14 @@ class DictDatabase(Database):
 
 
 class JsonDatabase(Database):
-    def __init__(self, *json_path: [str, Path]):
+    def __init__(
+            self,
+            json_path: typing.Union[
+                str, Path,
+                typing.List[typing.Union[str, Path]],
+                typing.Tuple[typing.Union[str, Path]]],
+            *json_paths: typing.Union[str, Path],
+    ):
         """
 
         Args:
@@ -228,10 +241,15 @@ class JsonDatabase(Database):
                 `JsonDatabase(['json1.json', 'json2.json')`.
 
         """
-        if len(json_path) == 1 and isinstance(json_path[0], (list, tuple)):
-            json_path = json_path[0]
-        assert len(json_path) > 0, 'At least one database JSON is required!'
-        self._json_path = json_path
+        if isinstance(json_path, (list, tuple)):
+            assert not json_paths
+            self._json_path = list(json_path)
+        else:
+            self._json_path = [json_path] + list(json_paths)
+
+        assert len(self._json_path) > 0, (
+            'At least one database JSON is required!'
+        )
         super().__init__()
 
     _data = None

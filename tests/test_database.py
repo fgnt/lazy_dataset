@@ -272,6 +272,15 @@ class DatasetTest(unittest.TestCase):
         db = DictDatabase(self.json, self.json2)
         assert len(db.dataset_names) == 5
 
+        db = DictDatabase([self.json, self.json2])
+        assert len(db.dataset_names) == 5
+
+        db = DictDatabase(database_dict=self.json)
+        assert len(db.dataset_names) == 3
+
+        db = DictDatabase(database_dict=(self.json, self.json2))
+        assert len(db.dataset_names) == 5
+
         with pytest.raises(AssertionError):
             # Test metadata check
             DictDatabase(self.json2, self.json)
@@ -279,6 +288,9 @@ class DatasetTest(unittest.TestCase):
         with pytest.raises(AssertionError):
             # Test duplicate dataset name check
             DictDatabase(self.json, self.json)
+
+        with pytest.raises(AssertionError):
+            DictDatabase([self.json], self.json2)
 
     def test_json_database_multiple(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -295,6 +307,15 @@ class DatasetTest(unittest.TestCase):
             db = JsonDatabase(d1_path, d2_path)
             assert len(db.dataset_names) == 5
 
+            db = JsonDatabase([d1_path, d2_path])
+            assert len(db.dataset_names) == 5
+
+            db = JsonDatabase(json_path=d1_path)
+            assert len(db.dataset_names) == 3
+
+            db = JsonDatabase(json_path=(d1_path, d2_path))
+            assert len(db.dataset_names) == 5
+
             with pytest.raises(AssertionError):
                 # Test metadata check
                 _ = JsonDatabase(d2_path, d1_path).dataset_names
@@ -303,6 +324,8 @@ class DatasetTest(unittest.TestCase):
                 # Test duplicate dataset name check
                 _ = JsonDatabase(d1_path, d1_path).dataset_names
 
+            with pytest.raises(AssertionError):
+                DictDatabase([d1_path], d2_path)
 
 
 class UniqueIDDatasetTest(unittest.TestCase):
