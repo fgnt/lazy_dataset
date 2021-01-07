@@ -1333,6 +1333,28 @@ class Dataset:
         return DiskCacheDataset(self, cache_dir, reuse, clear)
 
 
+class KeyErrorCloseMatches(KeyError):
+    # Improve the Exception msg for KeyErrors
+    def __str__(self):
+        if len(self.args) == 2 and isinstance(self.args[0], str):
+            item, keys = self.args
+            import difflib
+            # Suggestions are sorted by their similarity.
+            try:
+                suggestions = difflib.get_close_matches(
+                    item, keys, cutoff=0, n=100
+                )
+            except TypeError:
+                keys = map(str, keys)
+                suggestions = difflib.get_close_matches(
+                    item, keys, cutoff=0, n=100
+                )
+            return f'Invalid key {item!r}.\n' \
+                   f'Close matches: {suggestions!r}.'
+        else:
+            return super().__str__()
+
+
 class DictDataset(Dataset):
     """
     Dataset to iterate over a dict of examples dicts.
@@ -1373,10 +1395,8 @@ class DictDataset(Dataset):
         if isinstance(item, str):
             try:
                 example = self.examples[item]
-            except Exception:
-                import difflib
-                similar = difflib.get_close_matches(item, self.keys())
-                raise KeyError(item, f'close_matches: {similar}', self)
+            except KeyError:
+                raise KeyErrorCloseMatches(item, self.keys()) from None
         elif isinstance(item, numbers.Integral):
             key = self.keys()[item]
             example = self.examples[key]
