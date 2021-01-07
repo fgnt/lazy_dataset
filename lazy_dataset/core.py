@@ -2079,7 +2079,7 @@ class ConcatenateDataset(Dataset):
         if isinstance(item, numbers.Integral):
             _item = item
             if item < 0:
-                item = item % len(self)
+                item = item + len(self)
             for dataset in self.input_datasets:
                 if len(dataset) <= item:
                     item -= len(dataset)
@@ -2403,7 +2403,7 @@ class BatchDataset(Dataset):
         if isinstance(index, numbers.Integral):
             if index < 0:
                 # only touch len when necessary
-                index = index % len(self)
+                index = index + len(self)
             input_index = index * self.batch_size
             current_batch = []
             for i in range(self.batch_size):
