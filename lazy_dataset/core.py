@@ -2070,16 +2070,33 @@ class ConcatenateDataset(Dataset):
         {'example_id': 'a'}
         >>> ds['c']
         {'example_id': 'c'}
+        >>> ds[5]
+        Traceback (most recent call last):
+          ...
+        IndexError: 5
+        >>> ds[-1]
+        {'example_id': 'd'}
+        >>> ds[-5]
+        Traceback (most recent call last):
+          ...
+        IndexError: -5
+
         """
         if isinstance(item, numbers.Integral):
+            _item = item
             if item < 0:
-                item = item % len(self)
+                item = item + len(self)
+                if item < 0:
+                    # Without this check, you could still get a value if
+                    # item < -len(self), but always from the first
+                    # dataset which is wrong.
+                    raise IndexError(_item)
             for dataset in self.input_datasets:
                 if len(dataset) <= item:
                     item -= len(dataset)
                 else:
                     return dataset[item]
-            raise KeyError(item)
+            raise IndexError(_item)
         elif isinstance(item, str):
             self.keys()  # test unique keys
             for dataset in self.input_datasets:
@@ -2087,13 +2104,13 @@ class ConcatenateDataset(Dataset):
                     return dataset[item]
             # In collections.ChainMap is
             # 'try: ... except KeyError: ...'
-            # used, since an dataset should provide a better exception msg,
+            # used, since a dataset should provide a better exception msg,
             # __contains__ is faster than collections.ChainMap
-            # because the overhead of calculating the exception msg is to high.
+            # because the overhead of calculating the exception msg is too high.
 
             if item in self.keys():
                 raise Exception(
-                    f'There is a internal error in {self.__class__}. '
+                    f'There is an internal error in {self.__class__}. '
                     f'Could not find {item} in input datasets, but it is in '
                     f'{self.keys()}'
                 )
@@ -2357,7 +2374,10 @@ class BatchDataset(Dataset):
         DictDataset(len=7)
       SliceDataset(slice(None, 6, None))
     BatchDataset(batch_size=3)
-
+    >>> ds[-3]
+    Traceback (most recent call last):
+      ...
+    IndexError: -3
     """
 
     def __init__(self, input_dataset, batch_size, drop_last=False):
@@ -2397,7 +2417,9 @@ class BatchDataset(Dataset):
         if isinstance(index, numbers.Integral):
             if index < 0:
                 # only touch len when necessary
-                index = index % len(self)
+                index = index + len(self)
+                if index < 0:
+                    raise IndexError(index - len(self))
             input_index = index * self.batch_size
             current_batch = []
             for i in range(self.batch_size):
