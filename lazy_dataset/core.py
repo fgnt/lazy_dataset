@@ -405,7 +405,7 @@ class Dataset:
         return self.__iter__()
 
     def map(self, map_fn: callable, num_workers: int = 0,
-            buffer_size: int = 100, backend: str = 't') -> 'MapDataset':
+            buffer_size: int = 100, backend: str = 't') -> 'Dataset':
         """
         Maps this dataset with `map_fn`. `map_fn` is applied to every element
         in the dataset and a new dataset is created with the results.
@@ -454,7 +454,7 @@ class Dataset:
         return MapDataset(map_fn, self)
 
     def prefetch(self, num_workers: int, buffer_size: int, backend: str = 't',
-                 catch_filter_exception: Any = None) -> 'PrefetchDataset':
+                 catch_filter_exception: Any = None) -> 'Dataset':
         """
         Prefetches data (i.e., executes all actions applied previously with,
         e.g., `.map`, `.filter`, `.batch` or others) asynchronously in the
@@ -561,7 +561,7 @@ class Dataset:
             return self[[i for i, e in enumerate(self) if filter_fn(e)]]
 
     def catch(self, exceptions=FilterException,
-              warn: bool = False) -> 'CatchExceptionDataset':
+              warn: bool = False) -> 'Dataset':
         """
         Drop examples that throw an exception (default: `FilterException`).
         This is an alternative to filter.
@@ -577,7 +577,7 @@ class Dataset:
         """
         return CatchExceptionDataset(self, exceptions=exceptions, warn=warn)
 
-    def concatenate(self, *others) -> 'ConcatenateDataset':
+    def concatenate(self, *others) -> 'Dataset':
         """
         Concatenate this dataset with others. The keys of all datasets need to
         be unambiguous.
@@ -610,7 +610,7 @@ class Dataset:
             others, = others
         return ConcatenateDataset(self, *others)
 
-    def intersperse(self, *others) -> 'IntersperseDataset':
+    def intersperse(self, *others) -> 'Dataset':
         """
         Intersperses datasets such that examples from each input dataset are
         evenly spaced in the output dataset.
@@ -644,7 +644,7 @@ class Dataset:
             others, = others
         return IntersperseDataset(self, *others)
 
-    def zip(self, *others) -> 'ZipDataset':
+    def zip(self, *others) -> 'Dataset':
         """
         Creates a `Dataset` by zipping together the given datasets.
 
@@ -696,7 +696,7 @@ class Dataset:
         """
         return ZipDataset(self, *others)
 
-    def key_zip(self, *others) -> 'ZipDataset':
+    def key_zip(self, *others) -> 'Dataset':
         """
         Creates a `Dataset` by zipping together the given datasets based on its
         keys.
@@ -1011,7 +1011,7 @@ class Dataset:
 
     def batch_dynamic_bucket(
             self, bucket_cls, expiration=None, drop_incomplete=False,
-            sort_key=None, reverse_sort=False, **bucket_kwargs):
+            sort_key=None, reverse_sort=False, **bucket_kwargs) -> 'Dataset':
         """dynamically spawn and gather examples into buckets.
         
         Note that this operation is work in progress
@@ -1049,7 +1049,7 @@ class Dataset:
             self, batch_size, len_key, max_padding_rate, max_total_size=None,
             expiration=None, drop_incomplete=False,
             sort_key=None, reverse_sort=False
-    ):
+    ) -> 'Dataset':
         """
         Wrapper for `batch_dynamic_bucket` using `DynamicTimeSeriesBucket`
 
@@ -1089,7 +1089,7 @@ class Dataset:
             sort_key=sort_key, reverse_sort=reverse_sort
         )
 
-    def unbatch(self) -> 'UnbatchDataset':
+    def unbatch(self) -> 'Dataset':
         """
         Divides a batch of examples into single examples, i.e. reverts
         `.batch()`.
@@ -1184,7 +1184,7 @@ class Dataset:
         i = rng_state.choice(len(self), size=size, replace=replace)
         return self[i]
 
-    def apply(self, apply_fn: callable) -> 'Dataset':
+    def apply(self, apply_fn: callable, lazy=False) -> 'Dataset':
         """
         Allows to apply functions to the complete dataset, not to the
         examples itself. Is equivalent to `dataset = apply_fn(dataset)`, but
@@ -1209,7 +1209,7 @@ class Dataset:
             self,
             lazy: bool = True,
             keep_mem_free: str = None,
-    ):
+    ) -> 'Dataset':
         """
         Caches data in memory. The dataset has to be indexable because the
         cache needs a unique identifier (key) for each example.
@@ -1288,7 +1288,7 @@ class Dataset:
             self,
             cache_dir: Optional[Union[Path, str]] = None,
             reuse: bool = False, clear: bool = True
-    ) -> 'DiskCacheDataset':
+    ) -> 'Dataset':
         """
         Caches data in a local cache dir using the `diskcache` package. Only
         works with indexable datasets because caching requires a unique key for
