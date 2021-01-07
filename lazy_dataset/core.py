@@ -2070,8 +2070,14 @@ class ConcatenateDataset(Dataset):
         {'example_id': 'a'}
         >>> ds['c']
         {'example_id': 'c'}
+        >>> ds[5]
+        Traceback (most recent call last):
+          ...
+        KeyError: 5
+
         """
         if isinstance(item, numbers.Integral):
+            _item = item
             if item < 0:
                 item = item % len(self)
             for dataset in self.input_datasets:
@@ -2079,7 +2085,7 @@ class ConcatenateDataset(Dataset):
                     item -= len(dataset)
                 else:
                     return dataset[item]
-            raise KeyError(item)
+            raise KeyError(_item)
         elif isinstance(item, str):
             self.keys()  # test unique keys
             for dataset in self.input_datasets:
@@ -2087,13 +2093,13 @@ class ConcatenateDataset(Dataset):
                     return dataset[item]
             # In collections.ChainMap is
             # 'try: ... except KeyError: ...'
-            # used, since an dataset should provide a better exception msg,
+            # used, since a dataset should provide a better exception msg,
             # __contains__ is faster than collections.ChainMap
-            # because the overhead of calculating the exception msg is to high.
+            # because the overhead of calculating the exception msg is too high.
 
             if item in self.keys():
                 raise Exception(
-                    f'There is a internal error in {self.__class__}. '
+                    f'There is an internal error in {self.__class__}. '
                     f'Could not find {item} in input datasets, but it is in '
                     f'{self.keys()}'
                 )
