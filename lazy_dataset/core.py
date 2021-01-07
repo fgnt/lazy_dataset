@@ -1190,7 +1190,7 @@ class Dataset:
         i = rng_state.choice(len(self), size=size, replace=replace)
         return self[i]
 
-    def apply(self, apply_fn: callable, lazy=False) -> 'Dataset':
+    def apply(self, apply_fn: callable) -> 'Dataset':
         """
         Allows to apply functions to the complete dataset, not to the
         examples itself. Is equivalent to `dataset = apply_fn(dataset)`, but
