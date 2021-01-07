@@ -655,6 +655,12 @@ class Dataset:
         This function is usually followed by a map call to merge the tuple of
         dicts to a single dict.
 
+        Considerations for the future:
+             - Use Python 3.10 signature:
+               https://www.python.org/dev/peps/pep-0618/
+                   def zip(*iterables, strict=False):
+                       ....
+               But with the default `strict=True`.
         Args:
             *others: list of other datasets to be zipped
 
