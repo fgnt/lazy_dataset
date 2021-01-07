@@ -2135,7 +2135,7 @@ class ConcatenateDataset(Dataset):
                     f'Could not find {item} in input datasets, but it is in '
                     f'{self.keys()}'
                 )
-            raise KeyError(item)
+            raise KeyErrorCloseMatches(item, self.keys())
         else:
             return super().__getitem__(item)
 
