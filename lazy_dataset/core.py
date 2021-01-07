@@ -1485,8 +1485,7 @@ class MapDataset(Dataset):
         return len(self.input_dataset)
 
     def __iter__(self):
-        for example in self.input_dataset:
-            yield self.map_function(example)
+        yield from map(self.map_function, self.input_dataset)
 
     def keys(self):
         return self.input_dataset.keys()
@@ -2942,7 +2941,7 @@ class ProfilingDataset(Dataset):
         >>> ds_copy = ProfilingDataset(ds.map(sleep).prefetch(4, 8))
         >>> _ = list(ds_copy)
         >>> print(repr(ds_copy))  # doctest: +ELLIPSIS
-              DictDataset(len=3) (fetch duration = 0:00:00.0000...)
+              DictDataset(len=3) (fetch duration = 0:00:00.000...)
             MapDataset(_pickle.loads) (fetch duration = 0:00:00.000...)
           MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:03.00...)
         PrefetchDataset(4, 8, 't') (fetch duration = 0:00:01.0...)
@@ -2994,6 +2993,8 @@ class ProfilingDataset(Dataset):
             start = self.timestamp()
             try:
                 x = next(it)
+            except StopIteration:
+                return
             finally:
                 end = self.timestamp()
                 self.time[0] += (end - start)
