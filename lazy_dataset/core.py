@@ -2085,7 +2085,7 @@ class ConcatenateDataset(Dataset):
                     item -= len(dataset)
                 else:
                     return dataset[item]
-            raise KeyError(_item)
+            raise IndexError(_item)
         elif isinstance(item, str):
             self.keys()  # test unique keys
             for dataset in self.input_datasets:
