@@ -2467,6 +2467,20 @@ class BatchDataset(Dataset):
 class UnbatchDataset(Dataset):
     """
     Divides a batch of examples into single examples.
+
+    >>> ds = ListDataset([
+    ...     (1, 2),  # tuple
+    ...     [4, 5],  # list
+    ...     zip([6, 7, 8]),  # zip
+    ...     range(8, 10),  # range
+    ...     (i for i in range(10, 12)),  # collections.abc.Generator
+    ... ]).unbatch()
+    >>> ds
+      ListDataset(len=5)
+    UnbatchDataset()
+    >>> list(ds)
+    [1, 2, 4, 5, (6,), (7,), (8,), 8, 9, 10, 11]
+
     """
 
     def __init__(self, input_dataset):
@@ -2487,7 +2501,17 @@ class UnbatchDataset(Dataset):
 
     def __iter__(self):
         for batch in self.input_dataset:
-            assert isinstance(batch, (list, tuple, collections.Generator))
+            # Don't support `dict` and `str`.
+            # While
+            # assert not isinstance(batch, (dict, str)), (type(batch), batch)
+            # would work, use for now a whitelist instead of a blacklist:
+            assert isinstance(batch, (
+                list,
+                tuple,
+                collections.abc.Generator,
+                zip,
+                range,
+            )), (type(batch), batch)
             for example in batch:
                 yield example
 
