@@ -2073,7 +2073,7 @@ class ConcatenateDataset(Dataset):
         >>> ds[5]
         Traceback (most recent call last):
           ...
-        KeyError: 5
+        IndexError: 5
 
         """
         if isinstance(item, numbers.Integral):
