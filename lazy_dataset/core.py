@@ -8,6 +8,8 @@ import itertools
 import random
 import collections
 from pathlib import Path
+import time
+import datetime
 
 import numpy as np
 from typing import Optional, Union, Any, List, Dict, Tuple
@@ -1483,8 +1485,7 @@ class MapDataset(Dataset):
         return len(self.input_dataset)
 
     def __iter__(self):
-        for example in self.input_dataset:
-            yield self.map_function(example)
+        yield from map(self.map_function, self.input_dataset)
 
     def keys(self):
         return self.input_dataset.keys()
@@ -2913,6 +2914,108 @@ class DiskCacheDataset(CacheDataset):
             f'{self.__class__.__name__}(cache_dir='
             f'{self._cache.cache.directory}, reuse={self._cache.reuse})'
         )
+
+
+class ProfilingDataset(Dataset):
+    """
+    Special dataset to profile each dataset.
+    The repr will be modified to display the time that was spend in a
+    particular part of the pipeline.
+    
+    Warning:
+        This Dataset has limited support for prefetching. Only GIL bounded
+        prefetching is supported (e.g. thread pool and not process pool).
+
+    Example:
+        >>> import lazy_dataset
+        >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3})
+        >>> def sleep(ex):
+        ...     time.sleep(1)
+        ...     return ex
+        >>> ds_copy = ProfilingDataset(ds.map(sleep))
+        >>> _ = list(ds_copy)
+        >>> print(repr(ds_copy))  # doctest: +ELLIPSIS
+            DictDataset(len=3) (fetch duration = 0:00:00.0000...)
+          MapDataset(_pickle.loads) (fetch duration = 0:00:00.000...)
+        MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:03.00...)
+        >>> ds_copy = ProfilingDataset(ds.map(sleep).prefetch(4, 8))
+        >>> _ = list(ds_copy)
+        >>> print(repr(ds_copy))  # doctest: +ELLIPSIS
+              DictDataset(len=3) (fetch duration = 0:00:00.000...)
+            MapDataset(_pickle.loads) (fetch duration = 0:00:00.000...)
+          MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:03.00...)
+        PrefetchDataset(4, 8, 't') (fetch duration = 0:00:01.0...)
+
+    """
+    # alternative time.process_time
+    timestamp = staticmethod(time.perf_counter)
+
+    def __init__(self, input_dataset):
+        if isinstance(input_dataset, self.__class__):
+            # This is not necessary, but the output is difficult to interpret.
+            raise RuntimeError(
+                'You can use ProfilingDataset only once.\n'
+                'The input_dataset is already a ProfilingDataset:\n'
+                f'{repr(input_dataset)}'
+            )
+        input_dataset = input_dataset.copy()
+
+        # use list with one element as mutable container to share the timer
+        # between the copies (Necessary for prefetch)
+        self.time = [0.0]
+
+        if hasattr(input_dataset, 'input_datasets'):
+            input_dataset.input_datasets = [
+                self.__class__(ds)
+                for ds in input_dataset.input_datasets
+            ]
+        if hasattr(input_dataset, 'input_dataset'):
+            input_dataset.input_dataset = ProfilingDataset(
+                input_dataset.input_dataset)
+
+        self.input_dataset = input_dataset
+
+    def __repr__(self):
+        r = repr(self.input_dataset)
+        # Better alternative for the name "fetch duration"?
+        r += f' (fetch duration = {datetime.timedelta(seconds=self.time[0])})'
+        return r
+
+    def __len__(self):
+        return len(self.input_dataset)
+
+    def indexable(self):
+        return self.input_dataset.indexable()
+
+    def __iter__(self):
+        it = iter(self.input_dataset)
+        while True:
+            start = self.timestamp()
+            try:
+                x = next(it)
+            except StopIteration:
+                return
+            finally:
+                end = self.timestamp()
+                self.time[0] += (end - start)
+            yield x
+
+    def __getitem__(self, item):
+        start = self.timestamp()
+        # Avoid context manager: https://stackoverflow.com/a/26156031/5766934
+        try:
+            return self.input_dataset[item]
+        finally:
+            end = self.timestamp()
+            self.time[0] += (end - start)
+
+    def copy(self, freeze=False):
+        # Use __new__ to disable the copy in the __init__
+        new = self.__class__.__new__(self.__class__)
+        new.input_dataset = self.input_dataset.copy(freeze=freeze)
+        # Share time for prefetch
+        new.time = self.time
+        return new
 
 
 if __name__ == '__main__':
