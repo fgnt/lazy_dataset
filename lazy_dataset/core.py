@@ -2074,12 +2074,23 @@ class ConcatenateDataset(Dataset):
         Traceback (most recent call last):
           ...
         IndexError: 5
+        >>> ds[-1]
+        {'example_id': 'd'}
+        >>> ds[-5]
+        Traceback (most recent call last):
+          ...
+        IndexError: -5
 
         """
         if isinstance(item, numbers.Integral):
             _item = item
             if item < 0:
                 item = item + len(self)
+                if item < 0:
+                    # Without this check, you could still get a value if
+                    # item < -len(self), but always from the first
+                    # dataset which is wrong.
+                    raise IndexError(_item)
             for dataset in self.input_datasets:
                 if len(dataset) <= item:
                     item -= len(dataset)
@@ -2363,7 +2374,10 @@ class BatchDataset(Dataset):
         DictDataset(len=7)
       SliceDataset(slice(None, 6, None))
     BatchDataset(batch_size=3)
-
+    >>> ds[-3]
+    Traceback (most recent call last):
+      ...
+    IndexError: -3
     """
 
     def __init__(self, input_dataset, batch_size, drop_last=False):
@@ -2404,6 +2418,8 @@ class BatchDataset(Dataset):
             if index < 0:
                 # only touch len when necessary
                 index = index + len(self)
+                if index < 0:
+                    raise IndexError(index - len(self))
             input_index = index * self.batch_size
             current_batch = []
             for i in range(self.batch_size):
