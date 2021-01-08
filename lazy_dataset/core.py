@@ -405,7 +405,7 @@ class Dataset:
         return self.__iter__()
 
     def map(self, map_fn: callable, num_workers: int = 0,
-            buffer_size: int = 100, backend: str = 't') -> 'MapDataset':
+            buffer_size: int = 100, backend: str = 't') -> 'Dataset':
         """
         Maps this dataset with `map_fn`. `map_fn` is applied to every element
         in the dataset and a new dataset is created with the results.
@@ -454,7 +454,7 @@ class Dataset:
         return MapDataset(map_fn, self)
 
     def prefetch(self, num_workers: int, buffer_size: int, backend: str = 't',
-                 catch_filter_exception: Any = None) -> 'PrefetchDataset':
+                 catch_filter_exception: Any = None) -> 'Dataset':
         """
         Prefetches data (i.e., executes all actions applied previously with,
         e.g., `.map`, `.filter`, `.batch` or others) asynchronously in the
@@ -561,7 +561,7 @@ class Dataset:
             return self[[i for i, e in enumerate(self) if filter_fn(e)]]
 
     def catch(self, exceptions=FilterException,
-              warn: bool = False) -> 'CatchExceptionDataset':
+              warn: bool = False) -> 'Dataset':
         """
         Drop examples that throw an exception (default: `FilterException`).
         This is an alternative to filter.
@@ -577,7 +577,7 @@ class Dataset:
         """
         return CatchExceptionDataset(self, exceptions=exceptions, warn=warn)
 
-    def concatenate(self, *others) -> 'ConcatenateDataset':
+    def concatenate(self, *others) -> 'Dataset':
         """
         Concatenate this dataset with others. The keys of all datasets need to
         be unambiguous.
@@ -610,7 +610,7 @@ class Dataset:
             others, = others
         return ConcatenateDataset(self, *others)
 
-    def intersperse(self, *others) -> 'IntersperseDataset':
+    def intersperse(self, *others) -> 'Dataset':
         """
         Intersperses datasets such that examples from each input dataset are
         evenly spaced in the output dataset.
@@ -644,7 +644,7 @@ class Dataset:
             others, = others
         return IntersperseDataset(self, *others)
 
-    def zip(self, *others) -> 'ZipDataset':
+    def zip(self, *others) -> 'Dataset':
         """
         Creates a `Dataset` by zipping together the given datasets.
 
@@ -655,6 +655,12 @@ class Dataset:
         This function is usually followed by a map call to merge the tuple of
         dicts to a single dict.
 
+        Considerations for the future:
+             - Use Python 3.10 signature:
+               https://www.python.org/dev/peps/pep-0618/
+                   def zip(*iterables, strict=False):
+                       ....
+               But with the default `strict=True`.
         Args:
             *others: list of other datasets to be zipped
 
@@ -696,7 +702,7 @@ class Dataset:
         """
         return ZipDataset(self, *others)
 
-    def key_zip(self, *others) -> 'ZipDataset':
+    def key_zip(self, *others) -> 'Dataset':
         """
         Creates a `Dataset` by zipping together the given datasets based on its
         keys.
@@ -1011,7 +1017,7 @@ class Dataset:
 
     def batch_dynamic_bucket(
             self, bucket_cls, expiration=None, drop_incomplete=False,
-            sort_key=None, reverse_sort=False, **bucket_kwargs):
+            sort_key=None, reverse_sort=False, **bucket_kwargs) -> 'Dataset':
         """dynamically spawn and gather examples into buckets.
         
         Note that this operation is work in progress
@@ -1049,7 +1055,7 @@ class Dataset:
             self, batch_size, len_key, max_padding_rate, max_total_size=None,
             expiration=None, drop_incomplete=False,
             sort_key=None, reverse_sort=False
-    ):
+    ) -> 'Dataset':
         """
         Wrapper for `batch_dynamic_bucket` using `DynamicTimeSeriesBucket`
 
@@ -1089,7 +1095,7 @@ class Dataset:
             sort_key=sort_key, reverse_sort=reverse_sort
         )
 
-    def unbatch(self) -> 'UnbatchDataset':
+    def unbatch(self) -> 'Dataset':
         """
         Divides a batch of examples into single examples, i.e. reverts
         `.batch()`.
@@ -1209,7 +1215,7 @@ class Dataset:
             self,
             lazy: bool = True,
             keep_mem_free: str = None,
-    ):
+    ) -> 'Dataset':
         """
         Caches data in memory. The dataset has to be indexable because the
         cache needs a unique identifier (key) for each example.
@@ -1288,7 +1294,7 @@ class Dataset:
             self,
             cache_dir: Optional[Union[Path, str]] = None,
             reuse: bool = False, clear: bool = True
-    ) -> 'DiskCacheDataset':
+    ) -> 'Dataset':
         """
         Caches data in a local cache dir using the `diskcache` package. Only
         works with indexable datasets because caching requires a unique key for
@@ -1333,6 +1339,28 @@ class Dataset:
         return DiskCacheDataset(self, cache_dir, reuse, clear)
 
 
+class KeyErrorCloseMatches(KeyError):
+    # Improve the Exception msg for KeyErrors
+    def __str__(self):
+        if len(self.args) == 2 and isinstance(self.args[0], str):
+            item, keys = self.args
+            import difflib
+            # Suggestions are sorted by their similarity.
+            try:
+                suggestions = difflib.get_close_matches(
+                    item, keys, cutoff=0, n=100
+                )
+            except TypeError:
+                keys = map(str, keys)
+                suggestions = difflib.get_close_matches(
+                    item, keys, cutoff=0, n=100
+                )
+            return f'Invalid key {item!r}.\n' \
+                   f'Close matches: {suggestions!r}.'
+        else:
+            return super().__str__()
+
+
 class DictDataset(Dataset):
     """
     Dataset to iterate over a dict of examples dicts.
@@ -1373,10 +1401,8 @@ class DictDataset(Dataset):
         if isinstance(item, str):
             try:
                 example = self.examples[item]
-            except Exception:
-                import difflib
-                similar = difflib.get_close_matches(item, self.keys())
-                raise KeyError(item, f'close_matches: {similar}', self)
+            except KeyError:
+                raise KeyErrorCloseMatches(item, self.keys()) from None
         elif isinstance(item, numbers.Integral):
             key = self.keys()[item]
             example = self.examples[key]
@@ -2115,7 +2141,7 @@ class ConcatenateDataset(Dataset):
                     f'Could not find {item} in input datasets, but it is in '
                     f'{self.keys()}'
                 )
-            raise KeyError(item)
+            raise KeyErrorCloseMatches(item, self.keys())
         else:
             return super().__getitem__(item)
 
@@ -2447,6 +2473,20 @@ class BatchDataset(Dataset):
 class UnbatchDataset(Dataset):
     """
     Divides a batch of examples into single examples.
+
+    >>> ds = ListDataset([
+    ...     (1, 2),  # tuple
+    ...     [4, 5],  # list
+    ...     zip([6, 7, 8]),  # zip
+    ...     range(8, 10),  # range
+    ...     (i for i in range(10, 12)),  # collections.abc.Generator
+    ... ]).unbatch()
+    >>> ds
+      ListDataset(len=5)
+    UnbatchDataset()
+    >>> list(ds)
+    [1, 2, 4, 5, (6,), (7,), (8,), 8, 9, 10, 11]
+
     """
 
     def __init__(self, input_dataset):
@@ -2467,7 +2507,17 @@ class UnbatchDataset(Dataset):
 
     def __iter__(self):
         for batch in self.input_dataset:
-            assert isinstance(batch, (list, tuple, collections.Generator))
+            # Don't support `dict` and `str`.
+            # While
+            # assert not isinstance(batch, (dict, str)), (type(batch), batch)
+            # would work, use for now a whitelist instead of a blacklist:
+            assert isinstance(batch, (
+                list,
+                tuple,
+                collections.abc.Generator,
+                zip,
+                range,
+            )), (type(batch), batch)
             for example in batch:
                 yield example
 
