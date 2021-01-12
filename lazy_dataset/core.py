@@ -454,7 +454,7 @@ class Dataset:
         return MapDataset(map_fn, self)
 
     def batch_map(self, map_fn: callable, num_workers: int = 0,
-                  buffer_size: int = 100, backend: str = 't'):
+                  buffer_size: int = 100, backend: str = 't') -> 'Dataset':
         """Applies map_fn to each element in each batch of the dataset.
         Requires dataset to be batched, i.e., the items of the
         dataset have to be iterable.
@@ -473,13 +473,14 @@ class Dataset:
           DictDataset(name='MyDataset', len=3)
         MapDataset(_pickle.loads)
         >>> def foo(x): return 2*x
-        >>> ds1 = ds.map(foo)
+        >>> ds1 = ds.map(foo).batch(1)
         >>> ds1  # doctest: +ELLIPSIS
-            DictDataset(name='MyDataset', len=3)
-          MapDataset(_pickle.loads)
-        MapDataset(<function foo at ...>)
+              DictDataset(name='MyDataset', len=3)
+            MapDataset(_pickle.loads)
+          MapDataset(<function foo at ...>)
+        BatchDataset(batch_size=1)
         >>> list(ds1)
-        [2, 4, 6]
+        [[2], [4], [6]]
         >>> ds2 = ds.batch(1).batch_map(foo)
         >>> ds2  # doctest: +ELLIPSIS
               DictDataset(name='MyDataset', len=3)
