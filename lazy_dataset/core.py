@@ -453,6 +453,49 @@ class Dataset:
             )
         return MapDataset(map_fn, self)
 
+    def batch_map(self, map_fn: callable, num_workers: int = 0,
+                  buffer_size: int = 100, backend: str = 't') -> 'Dataset':
+        """Applies map_fn to each element in each batch of the dataset.
+        Requires dataset to be batched, i.e., the items of the
+        dataset have to be iterable.
+
+        Args:
+            map_fn:
+            num_workers:
+            buffer_size:
+            backend:
+
+        Returns:
+
+        >>> import lazy_dataset
+        >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3}, name='MyDataset')
+        >>> ds
+          DictDataset(name='MyDataset', len=3)
+        MapDataset(_pickle.loads)
+        >>> def foo(x): return 2*x
+        >>> ds1 = ds.map(foo).batch(1)
+        >>> ds1  # doctest: +ELLIPSIS
+              DictDataset(name='MyDataset', len=3)
+            MapDataset(_pickle.loads)
+          MapDataset(<function foo at ...>)
+        BatchDataset(batch_size=1)
+        >>> list(ds1)
+        [[2], [4], [6]]
+        >>> ds2 = ds.batch(1).batch_map(foo)
+        >>> ds2  # doctest: +ELLIPSIS
+              DictDataset(name='MyDataset', len=3)
+            MapDataset(_pickle.loads)
+          BatchDataset(batch_size=1)
+        MapDataset(_BatchMapWrapper(<function foo at ...>))
+        >>> list(ds2)
+        [[2], [4], [6]]
+        """
+
+        return self.map(
+            _BatchMapWrapper(map_fn),
+            num_workers=num_workers, buffer_size=buffer_size, backend=backend
+        )
+
     def prefetch(self, num_workers: int, buffer_size: int, backend: str = 't',
                  catch_filter_exception: Any = None) -> 'Dataset':
         """
@@ -1557,6 +1600,17 @@ class ParMapDataset(MapDataset):
             max_workers=self.num_workers,
             backend=self.backend,
         )
+
+
+class _BatchMapWrapper:
+    def __init__(self, map_fn):
+        self.map_fn = map_fn
+
+    def __call__(self, batch):
+        return [self.map_fn(ex) for ex in batch]
+
+    def __str__(self):
+        return f'{self.__class__.__name__}({self.map_fn})'
 
 
 class CatchExceptionDataset(Dataset):
