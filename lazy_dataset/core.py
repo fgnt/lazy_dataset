@@ -1427,7 +1427,7 @@ class DictDataset(Dataset):
         self._keys = tuple(self.examples.keys())
 
     def copy(self, freeze=False):
-        # Use __new__ to not deepcopy attributes
+        # Use __new__ to avoid a copy of keys
         new = self.__class__.__new__(self.__class__)
         new.examples = self.examples
         new.name = self.name
@@ -1972,7 +1972,7 @@ class SliceDataset(Dataset):
         self.input_dataset = input_dataset
 
     def copy(self, freeze=False):
-        # Use __new__ to not deepcopy attributes
+        # Use __new__ to avoid a copy of slice (and __init__ overhead)
         new = self.__class__.__new__(self.__class__)
         new.input_dataset = self.input_dataset.copy(freeze=freeze)
         new._slice = self._slice
@@ -2255,7 +2255,7 @@ class IntersperseDataset(Dataset):
         ])
 
     def copy(self, freeze=False):
-        # Use __new__ to not deepcopy attributes
+        # Use __new__ to avoid a copy of order (and __init__ overhead)
         new = self.__class__.__new__(self.__class__)
         new.order = self.order
         new.input_datasets = [ds.copy(freeze=freeze) for ds in self.input_datasets]
