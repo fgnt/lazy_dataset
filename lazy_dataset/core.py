@@ -1754,8 +1754,8 @@ class PrefetchDataset(Dataset):
 
     def __len__(self):
         if self.catch_filter_exception:
-            raise TypeError(
-                f'__len__ is not implemented for {self.__class__} ' +
+            raise TypeErrorLazyMessage(
+                lambda: f'__len__ is not implemented for {self.__class__} ' +
                 f'if `catch_filter_exception` is set.\n' +
                 f'self: \n{repr(self)}'
             )
