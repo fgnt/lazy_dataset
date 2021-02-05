@@ -902,6 +902,20 @@ class Dataset:
             shuffle: If `True`, calls shuffle with default arguments
                 (*no reshuffle*) on each repetition prior to concatenation.
 
+        Example:
+            >>> import lazy_dataset
+            >>> ds = lazy_dataset.new([1, 2, 3, 4, 5])
+            >>> ds = ds.tile(reps=3)
+            >>> ds
+                ListDataset(len=5)
+              MapDataset(_pickle.loads)
+                ListDataset(len=5)
+              MapDataset(_pickle.loads)
+                ListDataset(len=5)
+              MapDataset(_pickle.loads)
+            ConcatenateDataset()
+            >>> list(ds)
+            [1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5]
         """
         datasets = [self] * reps
         if shuffle:
