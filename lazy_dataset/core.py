@@ -601,6 +601,24 @@ class Dataset:
         Returns:
             `FilterDataset` iterating over filtered examples.
 
+        Example:
+            >>> import lazy_dataset
+            >>> ds = lazy_dataset.new([1, 2, 3, 4, 5])
+            >>> ds_filterd = ds.filter(lambda ex: ex != 2, lazy=False)
+            >>> ds_filterd
+                ListDataset(len=5)
+              MapDataset(_pickle.loads)
+            SliceDataset([0, 2, 3, 4])
+            >>> list(ds_filterd)
+            [1, 3, 4, 5]
+            >>> ds_filterd = ds.filter(lambda ex: ex != 2, lazy=True)
+            >>> ds_filterd  # doctest: +ELLIPSIS
+                ListDataset(len=5)
+              MapDataset(_pickle.loads)
+            FilterDataset(<function <lambda> at 0x...>)
+            >>> list(ds_filterd)
+            [1, 3, 4, 5]
+
         """
         if lazy:
             # Input dataset can be indexable, but this is not needed.
