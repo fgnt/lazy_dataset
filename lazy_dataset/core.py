@@ -1048,7 +1048,19 @@ class Dataset:
             {'a': {'x': 1}, 'b': {'x': 3}, 'c': {'x': 12}, 'd': {'x': 2}}
         """
         if key_fn is None:
-            sort_order = sort_fn(self.keys())
+            try:
+                keys = self.keys()
+            except NotImplementedError as e:
+                raise RuntimeError(
+                    'dataset.sort(key_fn=None, ...) usees the keys\n'
+                    'that belongs to the examples to sort the dataset.\n'
+                    'This dataset has no well defined keys.\n'
+                    'Maybe you wanted to call\n'
+                    '    `dataset.sort(key_fn=lambda example: ..., ...)`\n'
+                    'to get the sort key from the example?\n'
+                    f'self: \n{repr(self)}'
+                ) from None
+            sort_order = sort_fn(keys)
         else:
             sort_values = [key_fn(example) for example in self]
             sort_order = [
