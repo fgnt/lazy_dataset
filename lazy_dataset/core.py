@@ -324,8 +324,8 @@ class Dataset:
         # The correct exception type is TypeError and not NotImplementedError
         # for __len__. For example len(dataset) ignores TypeError but not
         # NotImplementedError
-        raise TypeError(
-            f'__len__ is not implemented for {self.__class__}.\n'
+        raise TypeErrorLazyMessage(
+            lambda: f'__len__ is not implemented for {self.__class__}.\n'
             f'self: \n{repr(self)}'
         )
 
@@ -1170,7 +1170,10 @@ class Dataset:
             s = repr(self.input_dataset)
             r += textwrap.indent(s, indent) + '\n'
         if hasattr(self, 'input_datasets'):
-            for input_dataset in self.input_datasets:
+            for i, input_dataset in enumerate(self.input_datasets):
+                if i >= 11:
+                    r += textwrap.indent('...', indent) + '\n'
+                    break
                 s = repr(input_dataset)
                 r += textwrap.indent(s, indent) + '\n'
         return r + str(self)
@@ -1404,6 +1407,14 @@ class KeyErrorCloseMatches(KeyError):
             return super().__str__()
 
 
+class TypeErrorLazyMessage(TypeError):
+    def __init__(self, message_creator: callable):
+        self.message_creator = message_creator
+
+    def __str__(self):
+        return self.message_creator()
+
+
 class DictDataset(Dataset):
     """
     Dataset to iterate over a dict of examples dicts.
@@ -1416,7 +1427,12 @@ class DictDataset(Dataset):
         self._keys = tuple(self.examples.keys())
 
     def copy(self, freeze=False):
-        return self.__class__(self.examples, name=self.name)
+        # Use __new__ to avoid a copy of keys
+        new = self.__class__.__new__(self.__class__)
+        new.examples = self.examples
+        new.name = self.name
+        new._keys = self.keys()
+        return new
 
     @property
     def indexable(self):
@@ -1738,8 +1754,8 @@ class PrefetchDataset(Dataset):
 
     def __len__(self):
         if self.catch_filter_exception:
-            raise TypeError(
-                f'__len__ is not implemented for {self.__class__} ' +
+            raise TypeErrorLazyMessage(
+                lambda: f'__len__ is not implemented for {self.__class__} ' +
                 f'if `catch_filter_exception` is set.\n' +
                 f'self: \n{repr(self)}'
             )
@@ -1956,10 +1972,12 @@ class SliceDataset(Dataset):
         self.input_dataset = input_dataset
 
     def copy(self, freeze=False):
-        return self.__class__(
-            input_dataset=self.input_dataset.copy(freeze=freeze),
-            slice=self._slice,
-        )
+        # Use __new__ to avoid a copy of slice (and __init__ overhead)
+        new = self.__class__.__new__(self.__class__)
+        new.input_dataset = self.input_dataset.copy(freeze=freeze)
+        new._slice = self._slice
+        new.slice = self.slice
+        return new
 
     @property
     def indexable(self):
@@ -1990,7 +2008,7 @@ class SliceDataset(Dataset):
     def __str__(self):
         if isinstance(self._slice, (tuple, list)):
             slice_str = textwrap.shorten(
-                str(self._slice)[1:-1],
+                str(self._slice[:20])[1:-1],
                 width=50,
                 placeholder=' ...',
             )
@@ -2229,16 +2247,19 @@ class IntersperseDataset(Dataset):
                                                f'one dataset.'
                                                f'\n{self.input_datasets}')
         assert all([len(dataset) > 0 for dataset in self.input_datasets])
+        dataset_lengths = [len(ds) for ds in input_datasets]
         self.order = sorted([
-            ((example_index + 1) / len(dataset), dataset_index, example_index)
-            for dataset_index, dataset in enumerate(input_datasets)
-            for example_index in range(len(dataset))
+            ((example_index + 1) / ds_len, dataset_index, example_index)
+            for dataset_index, ds_len in enumerate(dataset_lengths)
+            for example_index in range(ds_len)
         ])
 
     def copy(self, freeze=False):
-        return self.__class__(
-            *[ds.copy(freeze=freeze) for ds in self.input_datasets]
-        )
+        # Use __new__ to avoid a copy of order (and __init__ overhead)
+        new = self.__class__.__new__(self.__class__)
+        new.order = self.order
+        new.input_datasets = [ds.copy(freeze=freeze) for ds in self.input_datasets]
+        return new
 
     _keys = None
 
@@ -2269,13 +2290,17 @@ class IntersperseDataset(Dataset):
     def indexable(self):
         return all([dataset.indexable for dataset in self.input_datasets])
 
+    @property
+    def ordered(self) -> bool:
+        return all(ds.ordered for ds in self.input_datasets)
+
     def __iter__(self):
         iterators = [iter(ds) for ds in self.input_datasets]
         for _, dataset_idx, _ in self.order:
             yield next(iterators[dataset_idx])
 
     def __len__(self):
-        return sum([len(i) for i in self.input_datasets])
+        return len(self.order)
 
     def __getitem__(self, item):
         if isinstance(item, numbers.Integral):
