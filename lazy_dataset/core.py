@@ -338,6 +338,18 @@ class Dataset:
 
     @property
     def ordered(self) -> bool:
+        """
+        Indicate whether each iteration over the dataset yield the examples
+        in the same order.
+
+        This property is used for the `cache` implementation.
+
+        Note: This property indicates only the ordered property from the
+              dataset side.
+              When a map function is not deterministic, i.e. has some random
+              parts, this property should be false, but the dataset is unable
+              to know this.
+        """
         raise NotImplementedError(
             f'ordered is not implemented for {self.__class__}.\n'
             f'self: \n{repr(self)}'
