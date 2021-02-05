@@ -1615,7 +1615,10 @@ class MapDataset(Dataset):
 
     def __str__(self):
         map_function_str = str(self.map_function)
-        if 'built-in function' in map_function_str:
+        if (
+                'built-in function' in map_function_str
+                or self.map_function == deepcopy
+        ):
             map_function_str = (
                 f'{self.map_function.__module__}'
                 f'.{self.map_function.__qualname__}'
