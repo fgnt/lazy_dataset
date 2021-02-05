@@ -2954,12 +2954,11 @@ class CacheDataset(Dataset):
 
         if isinstance(item, numbers.Integral):
             try:
-                value = self._cache[item]
+                return self._cache[item]
             except KeyError:
                 value = self.input_dataset[item]
                 if self.check():
                     self._cache[item] = value
-            finally:
                 return value
         else:
             # Support for slices etc.
