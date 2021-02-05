@@ -2890,19 +2890,13 @@ class _CacheWrapper:
 
 class CacheDataset(Dataset):
     def __init__(self, input_dataset: Dataset, keep_mem_free=None,
-                 immutable_warranty: str = 'pickle', *, _cache=None) -> None:
+                 immutable_warranty: str = 'pickle') -> None:
         assert input_dataset.indexable, (
             'CacheDataset only works if dataset is indexable!'
         )
         self.input_dataset = input_dataset
-
-        if _cache is not None:
-            self._cache = _cache
-        else:
-            self._cache = _CacheWrapper(immutable_warranty)
-
+        self._cache = _CacheWrapper(immutable_warranty)
         self._keep_mem_free = self._get_memory_size(keep_mem_free)
-        self._do_cache = True
 
     @property
     def indexable(self) -> bool:
@@ -2930,6 +2924,8 @@ class CacheDataset(Dataset):
         else:
             import humanfriendly
             return humanfriendly.parse_size(keep_mem_free, binary=True)
+
+    _do_cache = True
 
     def check(self):
         if self._keep_mem_free is None:
@@ -2987,11 +2983,10 @@ class CacheDataset(Dataset):
         # We have to share the cache here because otherwise a new cache would
         # be initialized at every copy and copy is called by prefetch before
         # iterating over the dataset
-        copy = self.__class__(
-            self.input_dataset.copy(freeze),
-            _cache=self._cache
-        )
-
+        copy = self.__class__.__new__(self.__class__)
+        copy.input_dataset = self.input_dataset.copy(freeze)
+        copy._cache = self._cache
+        copy._keep_mem_free = self._keep_mem_free
         return copy
 
     def __str__(self):
@@ -3014,6 +3009,7 @@ class _DiskCacheWrapper:
     """
     def __init__(self, cache_dir, reuse, clear):
         self.clear = clear
+        self.reuse = reuse
 
         import diskcache
         if cache_dir is not None and Path(cache_dir).is_dir() and len(
@@ -3061,15 +3057,27 @@ class DiskCacheDataset(CacheDataset):
     is thread-safe and forkable. This means it works with all backends for
     prefetching.
     """
-    def __init__(self, input_dataset, cache_dir=None, reuse=True, clear=True,
-                 *, _cache=None):
+    def __init__(self, input_dataset, cache_dir=None, reuse=True, clear=True):
         # We have the same assumptions as CacheDataset
         self.input_dataset = input_dataset
-        assert self.input_dataset.indexable
-        if _cache is None:
-            self._cache = _DiskCacheWrapper(cache_dir, reuse, clear)
-        else:
-            self._cache = _cache
+        assert self.input_dataset.indexable, self.input_dataset
+        self._cache = _DiskCacheWrapper(cache_dir, reuse, clear)
+
+    def copy(self, freeze: bool = False) -> 'Dataset':
+        if not freeze:
+            import warnings
+            warnings.warn(
+                'Copying a CacheDataset preserves the cache, i.e., the '
+                'already cached part of the dataset will be frozen even if '
+                'freeze=False!'
+            )
+        # We have to share the cache here because otherwise a new cache would
+        # be initialized at every copy and copy is called by prefetch before
+        # iterating over the dataset
+        copy = self.__class__.__new__(self.__class__)
+        copy.input_dataset = self.input_dataset.copy(freeze)
+        copy._cache = self._cache
+        return copy
 
     def check(self):
         import shutil
