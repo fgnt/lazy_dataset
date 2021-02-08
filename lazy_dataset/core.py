@@ -339,7 +339,7 @@ class Dataset:
     @property
     def ordered(self) -> bool:
         """
-        Indicate whether each iteration over the dataset yield the examples
+        Indicate whether each iteration over the dataset yields the examples
         in the same order.
 
         This property is used for the `cache` implementation.
@@ -1052,12 +1052,12 @@ class Dataset:
                 keys = self.keys()
             except NotImplementedError as e:
                 raise RuntimeError(
-                    'dataset.sort(key_fn=None, ...) usees the keys\n'
-                    'that belongs to the examples to sort the dataset.\n'
+                    'dataset.sort(key_fn=None, ...) uses the keys\n'
+                    'that belong to the examples to sort the dataset.\n'
                     'This dataset has no well defined keys.\n'
                     'Maybe you wanted to call\n'
                     '    `dataset.sort(key_fn=lambda example: ..., ...)`\n'
-                    'to get the sort key from the example?\n'
+                    'to obtain the sort key from the example?\n'
                     f'self: \n{repr(self)}'
                 ) from None
             sort_order = sort_fn(keys)
