@@ -338,6 +338,18 @@ class Dataset:
 
     @property
     def ordered(self) -> bool:
+        """
+        Indicate whether each iteration over the dataset yields the examples
+        in the same order.
+
+        This property is used for the `cache` implementation.
+
+        Note: This property indicates only the ordered property from the
+              dataset side.
+              When a map function is not deterministic, i.e. has some random
+              parts, this property should be false, but the dataset is unable
+              to know this.
+        """
         raise NotImplementedError(
             f'ordered is not implemented for {self.__class__}.\n'
             f'self: \n{repr(self)}'
@@ -588,6 +600,24 @@ class Dataset:
 
         Returns:
             `FilterDataset` iterating over filtered examples.
+
+        Example:
+            >>> import lazy_dataset
+            >>> ds = lazy_dataset.new([1, 2, 3, 4, 5])
+            >>> ds_filterd = ds.filter(lambda ex: ex != 2, lazy=False)
+            >>> ds_filterd
+                ListDataset(len=5)
+              MapDataset(_pickle.loads)
+            SliceDataset([0, 2, 3, 4])
+            >>> list(ds_filterd)
+            [1, 3, 4, 5]
+            >>> ds_filterd = ds.filter(lambda ex: ex != 2, lazy=True)
+            >>> ds_filterd  # doctest: +ELLIPSIS
+                ListDataset(len=5)
+              MapDataset(_pickle.loads)
+            FilterDataset(<function <lambda> at 0x...>)
+            >>> list(ds_filterd)
+            [1, 3, 4, 5]
 
         """
         if lazy:
@@ -872,6 +902,20 @@ class Dataset:
             shuffle: If `True`, calls shuffle with default arguments
                 (*no reshuffle*) on each repetition prior to concatenation.
 
+        Example:
+            >>> import lazy_dataset
+            >>> ds = lazy_dataset.new([1, 2, 3, 4, 5])
+            >>> ds = ds.tile(reps=3)
+            >>> ds
+                ListDataset(len=5)
+              MapDataset(_pickle.loads)
+                ListDataset(len=5)
+              MapDataset(_pickle.loads)
+                ListDataset(len=5)
+              MapDataset(_pickle.loads)
+            ConcatenateDataset()
+            >>> list(ds)
+            [1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5]
         """
         datasets = [self] * reps
         if shuffle:
@@ -1004,7 +1048,19 @@ class Dataset:
             {'a': {'x': 1}, 'b': {'x': 3}, 'c': {'x': 12}, 'd': {'x': 2}}
         """
         if key_fn is None:
-            sort_order = sort_fn(self.keys())
+            try:
+                keys = self.keys()
+            except NotImplementedError as e:
+                raise RuntimeError(
+                    'dataset.sort(key_fn=None, ...) uses the keys\n'
+                    'that belong to the examples to sort the dataset.\n'
+                    'This dataset has no well defined keys.\n'
+                    'Maybe you wanted to call\n'
+                    '    `dataset.sort(key_fn=lambda example: ..., ...)`\n'
+                    'to obtain the sort key from the example?\n'
+                    f'self: \n{repr(self)}'
+                ) from None
+            sort_order = sort_fn(keys)
         else:
             sort_values = [key_fn(example) for example in self]
             sort_order = [
@@ -1559,7 +1615,10 @@ class MapDataset(Dataset):
 
     def __str__(self):
         map_function_str = str(self.map_function)
-        if 'built-in function' in map_function_str:
+        if (
+                'built-in function' in map_function_str
+                or self.map_function == deepcopy
+        ):
             map_function_str = (
                 f'{self.map_function.__module__}'
                 f'.{self.map_function.__qualname__}'
@@ -2831,19 +2890,13 @@ class _CacheWrapper:
 
 class CacheDataset(Dataset):
     def __init__(self, input_dataset: Dataset, keep_mem_free=None,
-                 immutable_warranty: str = 'pickle', *, _cache=None) -> None:
+                 immutable_warranty: str = 'pickle') -> None:
         assert input_dataset.indexable, (
             'CacheDataset only works if dataset is indexable!'
         )
         self.input_dataset = input_dataset
-
-        if _cache is not None:
-            self._cache = _cache
-        else:
-            self._cache = _CacheWrapper(immutable_warranty)
-
+        self._cache = _CacheWrapper(immutable_warranty)
         self._keep_mem_free = self._get_memory_size(keep_mem_free)
-        self._do_cache = True
 
     @property
     def indexable(self) -> bool:
@@ -2872,6 +2925,8 @@ class CacheDataset(Dataset):
             import humanfriendly
             return humanfriendly.parse_size(keep_mem_free, binary=True)
 
+    _do_cache = True
+
     def check(self):
         if self._keep_mem_free is None:
             return True
@@ -2899,12 +2954,11 @@ class CacheDataset(Dataset):
 
         if isinstance(item, numbers.Integral):
             try:
-                value = self._cache[item]
+                return self._cache[item]
             except KeyError:
                 value = self.input_dataset[item]
                 if self.check():
                     self._cache[item] = value
-            finally:
                 return value
         else:
             # Support for slices etc.
@@ -2928,11 +2982,10 @@ class CacheDataset(Dataset):
         # We have to share the cache here because otherwise a new cache would
         # be initialized at every copy and copy is called by prefetch before
         # iterating over the dataset
-        copy = self.__class__(
-            self.input_dataset.copy(freeze),
-            _cache=self._cache
-        )
-
+        copy = self.__class__.__new__(self.__class__)
+        copy.input_dataset = self.input_dataset.copy(freeze)
+        copy._cache = self._cache
+        copy._keep_mem_free = self._keep_mem_free
         return copy
 
     def __str__(self):
@@ -2955,6 +3008,7 @@ class _DiskCacheWrapper:
     """
     def __init__(self, cache_dir, reuse, clear):
         self.clear = clear
+        self.reuse = reuse
 
         import diskcache
         if cache_dir is not None and Path(cache_dir).is_dir() and len(
@@ -3002,15 +3056,27 @@ class DiskCacheDataset(CacheDataset):
     is thread-safe and forkable. This means it works with all backends for
     prefetching.
     """
-    def __init__(self, input_dataset, cache_dir=None, reuse=True, clear=True,
-                 *, _cache=None):
+    def __init__(self, input_dataset, cache_dir=None, reuse=True, clear=True):
         # We have the same assumptions as CacheDataset
         self.input_dataset = input_dataset
-        assert self.input_dataset.indexable
-        if _cache is None:
-            self._cache = _DiskCacheWrapper(cache_dir, reuse, clear)
-        else:
-            self._cache = _cache
+        assert self.input_dataset.indexable, self.input_dataset
+        self._cache = _DiskCacheWrapper(cache_dir, reuse, clear)
+
+    def copy(self, freeze: bool = False) -> 'Dataset':
+        if not freeze:
+            import warnings
+            warnings.warn(
+                'Copying a CacheDataset preserves the cache, i.e., the '
+                'already cached part of the dataset will be frozen even if '
+                'freeze=False!'
+            )
+        # We have to share the cache here because otherwise a new cache would
+        # be initialized at every copy and copy is called by prefetch before
+        # iterating over the dataset
+        copy = self.__class__.__new__(self.__class__)
+        copy.input_dataset = self.input_dataset.copy(freeze)
+        copy._cache = self._cache
+        return copy
 
     def check(self):
         import shutil
