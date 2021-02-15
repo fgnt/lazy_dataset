@@ -1911,8 +1911,7 @@ class PrefetchDataset(Dataset):
         called with 4
         [0, 1, 3, 4]
         """
-        import threading
-        import queue
+        from lazy_dataset.parallel_utils import single_thread_prefetch
 
         if self.catch_filter_exception:
             if self.catch_filter_exception is True:
@@ -1926,40 +1925,7 @@ class PrefetchDataset(Dataset):
         else:
             input_dataset = self.input_dataset
 
-        shutdown = False
-        data_queue = queue.Queue(self.buffer_size)
-
-        def worker():
-            if shutdown:
-                return
-            try:
-                for ex in input_dataset:
-                    if shutdown:
-                        return
-                    data_queue.put(ex)
-                    if shutdown:
-                        return
-            finally:
-                data_queue.put(unique_object)
-
-        unique_object = object()
-
-        thread = threading.Thread(target=worker, args=())
-        thread.start()
-        try:
-            while True:
-                item = data_queue.get()
-                if item is unique_object:
-                    break
-                else:
-                    yield item
-        finally:
-            shutdown = True
-            try:
-                data_queue.get_nowait()
-            except queue.Empty:
-                    pass
-            thread.join()
+        return single_thread_prefetch(input_dataset, self.buffer_size)
 
     def __str__(self):
         return (

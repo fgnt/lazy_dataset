@@ -1,6 +1,7 @@
 import queue
 import concurrent.futures
 import os
+import threading
 from typing import Iterable, Optional
 
 
@@ -183,6 +184,69 @@ def lazy_parallel_map(
             q.put(submit(executor, function, ele, *args, **kwargs))
         while not q.empty():
             yield result(q.get())
+
+
+def single_thread_prefetch(
+        generator: Iterable,
+        buffer_size: int,
+):
+    """
+    Iterate over the generator in a thread and yield the values.
+
+    Args:
+        generator: Generator to iterate over
+        buffer_size: Number of examples to buffer
+
+    Returns:
+        generator
+
+    >>> generator = (print(i) for i in range(10))
+    >>> list(single_thread_prefetch(generator, 2))
+    [None, None, None, None, None, None, None, None, None, None]
+    >>> generator = (print(i) for i in range(10))
+    >>> next(iter(single_thread_prefetch(generator, 2)))
+    0
+    1
+    2
+
+    """
+    shutdown = False
+    data_queue = queue.Queue(buffer_size)
+    unique_object = object()
+
+    def worker(unique_object):
+        if shutdown:
+            return
+        try:
+            for item in generator:
+                if shutdown:
+                    return
+                data_queue.put(item)
+                if shutdown:
+                    return
+        finally:
+            data_queue.put(unique_object)
+
+    thread = threading.Thread(target=worker, args=())
+    thread.start()
+    try:
+        while True:
+            item = data_queue.get()
+            if item is unique_object:
+                break
+            else:
+                yield item
+    finally:
+        shutdown = True
+        try:
+            # Handle a break of the iteration.
+            # When the main thread decided to cancel the iteration, we must
+            # trigger the thread to run in the shutdown, otherwise the tread
+            # may hang in `data_queue.put(item)`
+            data_queue.get_nowait()
+        except queue.Empty:
+            pass
+        thread.join()
 
 
 if __name__ == '__main__':
