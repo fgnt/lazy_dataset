@@ -1,6 +1,7 @@
 import queue
 import concurrent.futures
 import os
+import sys
 import threading
 from typing import Iterable, Optional
 
@@ -193,6 +194,34 @@ def single_thread_prefetch(
     """
     Iterate over the generator in a thread and yield the values.
 
+    Why can this function provide a speedup, when it uses only one thread?
+        The trick is, that it loads the next item, while the main thread can
+        process the current example.
+
+        Here an example, where `slow_function_1` and `slow_function_2` are
+        executed in parallel:
+
+            generator = (slow_function_1(i) for i in range(10))
+            for item in single_thread_prefetch(generator, 2):
+               slow_function_2(item) # Do something time consuming with item
+
+        But when you do something like
+
+            generator = (slow_function_1(i) for i in range(10))
+            for ... in list(single_thread_prefetch(generator, 2)):
+               slow_function_2(item) # Do something time consuming with item
+
+        or
+
+            generator = [slow_function_1(i) for i in range(10)]
+            for ... in single_thread_prefetch(generator, 2):
+               slow_function_2(item) # Do something time consuming with item
+
+        you will observe no speedup.
+        In the first example, the `list(...)` converts the output generator
+        of this function to a `list` and in the second is a list comprehention
+        used and not a generator comprehention (i.e. `(...)` -> `[...]`).
+
     Args:
         generator: Generator to iterate over
         buffer_size: Number of examples to buffer
@@ -200,21 +229,34 @@ def single_thread_prefetch(
     Returns:
         generator
 
-    >>> generator = (print(i) for i in range(10))
+    >>> generator = (print(i) for i in range(5))
     >>> list(single_thread_prefetch(generator, 2))
-    [None, None, None, None, None, None, None, None, None, None]
+    0
+    1
+    2
+    3
+    4
+    [None, None, None, None, None]
     >>> generator = (print(i) for i in range(10))
     >>> next(iter(single_thread_prefetch(generator, 2)))
     0
     1
     2
+    >>> def foo(): raise RuntimeError("Thread Exception")
+    >>> generator = (foo() for i in range(10))
+    >>> for i in single_thread_prefetch(generator, 2):
+    ...     print(i)
+    Traceback (most recent call last):
+    ...
+    RuntimeError: Thread Exception
 
     """
-    shutdown = False
+    shutdown = False  # A "Lock" is not necessary
     data_queue = queue.Queue(buffer_size)
     unique_object = object()
+    exc_info = None
 
-    def worker(unique_object):
+    def worker():
         if shutdown:
             return
         try:
@@ -224,6 +266,11 @@ def single_thread_prefetch(
                 data_queue.put(item)
                 if shutdown:
                     return
+        except Exception:
+            # Save the exception and reraise it in the main thread
+            nonlocal exc_info
+            # https://stackoverflow.com/a/1854263/5766934
+            exc_info = sys.exc_info()
         finally:
             data_queue.put(unique_object)
 
@@ -241,12 +288,17 @@ def single_thread_prefetch(
         try:
             # Handle a break of the iteration.
             # When the main thread decided to cancel the iteration, we must
-            # trigger the thread to run in the shutdown, otherwise the tread
+            # trigger the thread to run in the shutdown, otherwise the thread
             # may hang in `data_queue.put(item)`
-            data_queue.get_nowait()
+            # Not sure, if there is a critical timing, when multiple get calls
+            # are necessary. Hence call it until it is empty.
+            while True:
+                data_queue.get_nowait()
         except queue.Empty:
             pass
         thread.join()
+    if exc_info is not None:
+        raise exc_info[1].with_traceback(exc_info[2])
 
 
 if __name__ == '__main__':
