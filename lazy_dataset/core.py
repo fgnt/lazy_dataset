@@ -514,8 +514,12 @@ class Dataset:
         Prefetches data (i.e., executes all actions applied previously with,
         e.g., `.map`, `.filter`, `.batch` or others) asynchronously in the
         background using `backend`.
+
         The dataset on which the `prefetch` method is used must be indexable
         (define `__getitem__`) and have a length (define `__len__`).
+        When `num_workers == 1` and the `backend == 't'` a fallback
+        implementation is used, that does not need these properties.
+
         For details on the available options for `backend` see
         `parallel_utils.lazy_parallel_map`.
         The threaded backend ('t') is recommended in most scenarios, especially
@@ -566,6 +570,17 @@ class Dataset:
             called with 1
             called with 2
             called with 3
+            0
+
+            # A second prefetch with multiple workes does not work, but a
+            # single worker can use the iter protocol.
+            >>> ds = DictDataset({k: v for v, k in enumerate(ascii[:10])})
+            >>> ds = ds.prefetch(2, 4).prefetch(1, 4)
+            >>> ds
+                DictDataset(len=10)
+              PrefetchDataset(2, 4, 't')
+            PrefetchDataset(1, 4, 't')
+            >>> next(iter(ds))
             0
 
         """
@@ -1775,16 +1790,21 @@ class PrefetchDataset(Dataset):
             backend='t',
             catch_filter_exception=False,
     ):
-
-        # Input dataset needs to be indexable.
-        try:
-            _ = len(input_dataset)
-        except Exception:
-            raise RuntimeError(
-                'You can only use Prefetch if the incoming dataset is '
-                'indexable.\n'
-                f'input_dataset:\n{input_dataset!r}'
-            )
+        if num_workers == 1 and backend == 't':
+            pass
+        else:
+            # Input dataset needs to be indexable.
+            try:
+                _ = len(input_dataset)
+            except Exception:
+                # Note: Indexable is not the necessary property, but I don't know
+                #       how to shortly describe that the frozen dataset must be
+                #       indexable.
+                raise RuntimeError(
+                    'You can only use Prefetch with multiple workers if the'
+                    'incoming dataset is indexable.\n'
+                    f'input_dataset:\n{input_dataset!r}'
+                )
         assert num_workers >= 1, num_workers
         assert buffer_size >= num_workers, (num_workers, buffer_size)
 
@@ -1822,6 +1842,10 @@ class PrefetchDataset(Dataset):
             return len(self.input_dataset)
 
     def __iter__(self):
+        if self.num_workers == 1 and self.backend == 't':
+            yield from self._single_thread_prefetch()
+            return
+
         # Convert ReShuffleDataset to ShuffleDataset
         input_dataset = self.input_dataset.copy(freeze=True)
 
@@ -1860,6 +1884,48 @@ class PrefetchDataset(Dataset):
                     pass
                 else:
                     yield data
+
+    def _single_thread_prefetch(self):
+        """
+                >>> import string
+        >>> ascii = string.ascii_lowercase
+        >>> ds = DictDataset({k: v for v, k in enumerate(ascii[:5])})
+        >>> list(ds)
+        [0, 1, 2, 3, 4]
+        >>> def foo(ex):
+        ...     print(f'called with {ex}')
+        ...     return ex
+        >>> ds = ds.map(foo)
+        >>> ds = PrefetchDataset(ds.filter(lambda x: x != 2), 1, 2)
+        >>> next(iter(ds))  # The buffer is filled with [1, 3]. 2 is ignored.
+        called with 0
+        called with 1
+        called with 2
+        called with 3
+        0
+        >>> list(ds)  # Note: 2 is missing
+        called with 0
+        called with 1
+        called with 2
+        called with 3
+        called with 4
+        [0, 1, 3, 4]
+        """
+        from lazy_dataset.parallel_utils import single_thread_prefetch
+
+        if self.catch_filter_exception:
+            if self.catch_filter_exception is True:
+                exceptions = FilterException
+            else:
+                exceptions = self.catch_filter_exception
+            input_dataset = CatchExceptionDataset(
+                self.input_dataset,
+                exceptions=exceptions,
+            )
+        else:
+            input_dataset = self.input_dataset
+
+        return single_thread_prefetch(input_dataset, self.buffer_size)
 
     def __str__(self):
         return (
