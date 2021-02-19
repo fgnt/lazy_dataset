@@ -3149,8 +3149,8 @@ class ProfilingDataset(Dataset):
         >>> print(repr(ds_copy))     # doctest: +ELLIPSIS
                 DictDataset(len=3) (fetch duration = 0:00:00.0..., hits = 3)
               MapDataset(_pickle.loads) (fetch duration = 0:00:00.0..., hits = 3)
-            MapDataset(<function f at 0x...>) (fetch duration = 0:00:00.0..., hits = 3 (1 failed))
-          MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:02.0..., hits = 3 (1 failed))
+            MapDataset(<function f at 0x...>) (fetch duration = 0:00:00.0..., hits = 3 (1 filtered))
+          MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:02.0..., hits = 3 (1 filtered))
         CatchExceptionDataset() (fetch duration = 0:00:02.0..., hits = 2)
 
     """
@@ -3190,8 +3190,8 @@ class ProfilingDataset(Dataset):
 
         hits = f'hits = {self.hit_count[0]}'
         if self.hit_count[1]:
-            # Better alternative for the name "failed"?
-            hits += f' ({self.hit_count[1]} failed)'
+            # Better alternative for the name "filtered"?
+            hits += f' ({self.hit_count[1]} filtered)'
 
         # Better alternative for the name "fetch duration"?
         r += (f' (fetch duration = {datetime.timedelta(seconds=self.time[0])}, ' 
