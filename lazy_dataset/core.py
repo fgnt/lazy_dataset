@@ -1315,7 +1315,7 @@ class Dataset:
 
         Args:
             apply_fn: For now, it is a single function, e.g.,
-                `lambda ds: ds.shard(num_shards, shard_index)` but can
+                `lambda ds: ds.shard(num_shards, shard_index)`   but can
                 potentially be a list in future implementations.
 
         Returns:
@@ -3196,16 +3196,28 @@ class ProfilingDataset(Dataset):
         >>> ds_copy = ProfilingDataset(ds.map(sleep))
         >>> _ = list(ds_copy)
         >>> print(repr(ds_copy))  # doctest: +ELLIPSIS
-            DictDataset(len=3) (fetch duration = 0:00:00.0000...)
-          MapDataset(_pickle.loads) (fetch duration = 0:00:00.000...)
-        MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:03.00...)
+            DictDataset(len=3) (fetch duration = 0:00:00.0000..., hits = 3)
+          MapDataset(_pickle.loads) (fetch duration = 0:00:00.000..., hits = 3)
+        MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:03.00..., hits = 3)
         >>> ds_copy = ProfilingDataset(ds.map(sleep).prefetch(4, 8))
         >>> _ = list(ds_copy)
         >>> print(repr(ds_copy))  # doctest: +ELLIPSIS
-              DictDataset(len=3) (fetch duration = 0:00:00.000...)
-            MapDataset(_pickle.loads) (fetch duration = 0:00:00.000...)
-          MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:03.00...)
-        PrefetchDataset(4, 8, 't') (fetch duration = 0:00:01.0...)
+              DictDataset(len=3) (fetch duration = 0:00:00.000..., hits = 3)
+            MapDataset(_pickle.loads) (fetch duration = 0:00:00.000..., hits = 3)
+          MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:03.00..., hits = 3)
+        PrefetchDataset(4, 8, 't') (fetch duration = 0:00:01.0..., hits = 3)
+        >>> def f(ex):
+        ...     if ex % 2 == 0:
+        ...         raise FilterException()
+        ...     return ex
+        >>> ds_copy = ProfilingDataset(ds.map(f).map(sleep).catch(FilterException))
+        >>> _ = list(ds_copy)
+        >>> print(repr(ds_copy))     # doctest: +ELLIPSIS
+                DictDataset(len=3) (fetch duration = 0:00:00.0..., hits = 3)
+              MapDataset(_pickle.loads) (fetch duration = 0:00:00.0..., hits = 3)
+            MapDataset(<function f at 0x...>) (fetch duration = 0:00:00.0..., hits = 3 (1 filtered))
+          MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:02.0..., hits = 3 (1 filtered))
+        CatchExceptionDataset() (fetch duration = 0:00:02.0..., hits = 2)
 
     """
     # alternative time.process_time
@@ -3224,6 +3236,9 @@ class ProfilingDataset(Dataset):
         # use list with one element as mutable container to share the timer
         # between the copies (Necessary for prefetch)
         self.time = [0.0]
+        # Use list with two elements as mutable container for hit count to share
+        # it between copies: [<total_hit_count>, <failed_hit_count>]
+        self.hit_count = [0, 0]
 
         if hasattr(input_dataset, 'input_datasets'):
             input_dataset.input_datasets = [
@@ -3238,8 +3253,15 @@ class ProfilingDataset(Dataset):
 
     def __repr__(self):
         r = repr(self.input_dataset)
+
+        hits = f'hits = {self.hit_count[0]}'
+        if self.hit_count[1]:
+            # Better alternative for the name "filtered"?
+            hits += f' ({self.hit_count[1]} filtered)'
+
         # Better alternative for the name "fetch duration"?
-        r += f' (fetch duration = {datetime.timedelta(seconds=self.time[0])})'
+        r += (f' (fetch duration = {datetime.timedelta(seconds=self.time[0])}, ' 
+             f'{hits})')
         return r
 
     def __len__(self):
@@ -3252,10 +3274,15 @@ class ProfilingDataset(Dataset):
         it = iter(self.input_dataset)
         while True:
             start = self.timestamp()
+            self.hit_count[0] += 1
             try:
                 x = next(it)
             except StopIteration:
+                self.hit_count[0] -= 1
                 return
+            except Exception:
+                self.hit_count[1] += 1
+                raise
             finally:
                 end = self.timestamp()
                 self.time[0] += (end - start)
@@ -3264,8 +3291,12 @@ class ProfilingDataset(Dataset):
     def __getitem__(self, item):
         start = self.timestamp()
         # Avoid context manager: https://stackoverflow.com/a/26156031/5766934
+        self.hit_count[0] += 1
         try:
             return self.input_dataset[item]
+        except Exception:
+            self.hit_count[1] += 1
+            raise
         finally:
             end = self.timestamp()
             self.time[0] += (end - start)
@@ -3276,6 +3307,7 @@ class ProfilingDataset(Dataset):
         new.input_dataset = self.input_dataset.copy(freeze=freeze)
         # Share time for prefetch
         new.time = self.time
+        new.hit_count = self.hit_count
         return new
 
 
