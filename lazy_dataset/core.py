@@ -1786,10 +1786,10 @@ class CatchExceptionDataset(Dataset):
                     msg = repr(e)
                     LOG.warning(msg)
         if catched_count > 0:
-            types = ','.join([exception.__name__ for exception in self.exceptions]) \
+            types = ', '.join([exception.__name__ for exception in self.exceptions]) \
                 if isinstance(self.exceptions, (list, tuple)) \
                 else self.exceptions.__name__
-            LOG.info(f'CatchExceptionDataset filtered {catched_count} of {total_count} examples (catched expections: {types}).')
+            LOG.info(f'{self.__class__.__name__} filtered {catched_count} of {total_count} examples (catched expections: {types}).')
 
 
 class PrefetchDataset(Dataset):
@@ -1899,10 +1899,10 @@ class PrefetchDataset(Dataset):
                 else:
                     yield data
             if catched_count > 0:
-                types = ','.join([exception.__name__ for exception in catch_filter_exception]) \
+                types = ', '.join([exception.__name__ for exception in catch_filter_exception]) \
                     if isinstance(catch_filter_exception, (list, tuple)) \
                     else catch_filter_exception.__name__
-                LOG.info(f'PrefetchDataset filtered {catched_count} of {total_count} examples (catched exceptions: {types}).')
+                LOG.info(f'{self.__class__.__name__} filtered {catched_count} of {total_count} examples (catched exceptions: {types}).')
 
     def _single_thread_prefetch(self):
         """
@@ -2221,7 +2221,7 @@ class FilterDataset(Dataset):
             else:
                 filtered_count += 1
         if filtered_count > 0:
-            LOG.info(f'FilterDataset filtered {filtered_count} of {total_count} examples.')
+            LOG.info(f'{self.__class__.__name__} filtered {filtered_count} of {total_count} examples.')
 
     def __getitem__(self, key):
         assert isinstance(key, str), (
@@ -2960,7 +2960,7 @@ class DynamicBucketDataset(Dataset):
             else:
                 dropped_count += len(data)
         if dropped_count > 0:
-            LOG.info(f'DynamicBucketDataset dropped {dropped_count} of {total_count} examples.')
+            LOG.info(f'{self.__class__.__name__} dropped {dropped_count} of {total_count} examples.')
 
 
 class _CacheWrapper:
@@ -3108,8 +3108,7 @@ class _DiskCacheWrapper:
         if cache_dir is not None and Path(cache_dir).is_dir() and len(
                 list(Path(cache_dir).glob('*'))) > 0:
             if reuse:
-                print(f'Cache dir "{cache_dir}" already exists. Re-using '
-                      f'stored data.')
+                LOG.info(f'Cache dir "{cache_dir}" already exists. Re-using stored data.')
             else:
                 raise RuntimeError(
                     f'Cache dir "{cache_dir}" already exists! Either remove '
