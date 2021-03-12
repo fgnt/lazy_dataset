@@ -2208,12 +2208,14 @@ class FilterDataset(Dataset):
 
     def __iter__(self):
         filtered_count = 0
+        total_count = 0
         for example in self.input_dataset:
+            total_count += 1
             if self.filter_function(example):
                 yield example
             else:
                 filtered_count += 1
-        LOG.info(f'FilterDataset filtered {filtered_count} from {len(self)} examples.')
+        LOG.info(f'FilterDataset filtered {filtered_count} from {total_count} examples.')
 
     def __getitem__(self, key):
         assert isinstance(key, str), (
@@ -2843,7 +2845,6 @@ class DynamicBucketDataset(Dataset):
     >>> batch_dataset = DynamicBucketDataset(\
     examples, DynamicTimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.5, drop_incomplete=True)
     >>> [batch for batch in batch_dataset]
-    Dropped 1 examples
     [[10, 5], [7, 8], [1, 2]]
     >>> batch_dataset = DynamicBucketDataset(\
     examples, DynamicTimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.2)
