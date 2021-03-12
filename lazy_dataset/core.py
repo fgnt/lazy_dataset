@@ -646,7 +646,9 @@ class Dataset:
                     'You can only use lazy=False if the incoming dataset is '
                     'indexable.'
                 )
-            return self[[i for i, e in enumerate(self) if filter_fn(e)]]
+            idx = [i for i, e in enumerate(self) if filter_fn(e)]
+            LOG.info(f'Filtered {len(self)-len(idx)} from {len(self)} examples.')
+            return self[idx]
 
     def catch(self, exceptions=FilterException,
               warn: bool = False) -> 'Dataset':
@@ -1771,14 +1773,20 @@ class CatchExceptionDataset(Dataset):
 
     def __iter__(self):
         input_dataset = self.input_dataset.copy(freeze=True)
-
+        catched_count = 0
         for i in range(len(input_dataset)):
             try:
                 yield input_dataset[i]
             except self.exceptions as e:
+                catched_count += 1
                 if self.warn:
                     msg = repr(e)
                     LOG.warning(msg)
+        if catched_count > 0:
+            types = [exception.__name__ for exception in self.exceptions] \
+                if isinstance(self.exceptions, (list, tuple)) \
+                else self.exceptions.__name__
+            LOG.info(f'CatchExceptionDataset catched {catched_count} exceptions of type {types}.')
 
 
 class PrefetchDataset(Dataset):
@@ -1860,6 +1868,7 @@ class PrefetchDataset(Dataset):
                 backend=self.backend,
             )
         else:
+            catched_count = 0
             if self.catch_filter_exception is True:
                 catch_filter_exception = FilterException
             else:
@@ -1881,9 +1890,14 @@ class PrefetchDataset(Dataset):
                 backend=self.backend,
             ):
                 if data is unique_object:
-                    pass
+                    catched_count += 1
                 else:
                     yield data
+            if catched_count > 0:
+                types = [exception.__name__ for exception in catch_filter_exception] \
+                    if isinstance(catch_filter_exception, (list, tuple)) \
+                    else catch_filter_exception.__name__
+                LOG.info(f'PrefetchDataset catched {catched_count} exceptions of type {types}.')
 
     def _single_thread_prefetch(self):
         """
@@ -2193,9 +2207,13 @@ class FilterDataset(Dataset):
         return f'{self.__class__.__name__}({self.filter_function})'
 
     def __iter__(self):
+        filtered_count = 0
         for example in self.input_dataset:
             if self.filter_function(example):
                 yield example
+            else:
+                filtered_count += 1
+        LOG.info(f'FilterDataset filtered {filtered_count} from {len(self)} examples.')
 
     def __getitem__(self, key):
         assert isinstance(key, str), (
@@ -2873,6 +2891,7 @@ class DynamicBucketDataset(Dataset):
     def copy(self, freeze=False):
         return self.__class__(
             input_dataset=self.input_dataset.copy(freeze=freeze),
+            bucket_cls=self.bucket_cls,
             expiration=self.expiration,
             drop_incomplete=self.drop_incomplete,
             sort_key=self.sort_key,
@@ -2932,7 +2951,7 @@ class DynamicBucketDataset(Dataset):
             else:
                 dropped_count += len(data)
         if dropped_count > 0:
-            print(f'Dropped {dropped_count} examples')
+            LOG.info(f'DynamicBucketDataset dropped {dropped_count} examples')
 
 
 class _CacheWrapper:
