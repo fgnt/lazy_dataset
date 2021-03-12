@@ -646,7 +646,10 @@ class Dataset:
                     'You can only use lazy=False if the incoming dataset is '
                     'indexable.'
                 )
-            return self[[i for i, e in enumerate(self) if filter_fn(e)]]
+            idx = [i for i, e in enumerate(self) if filter_fn(e)]
+            if len(self) > len(idx):
+                LOG.info(f'Filtered {len(self)-len(idx)} of {len(self)} examples.')
+            return self[idx]
 
     def catch(self, exceptions=FilterException,
               warn: bool = False) -> 'Dataset':
@@ -1771,14 +1774,22 @@ class CatchExceptionDataset(Dataset):
 
     def __iter__(self):
         input_dataset = self.input_dataset.copy(freeze=True)
-
+        catched_count = 0
+        total_count = 0
         for i in range(len(input_dataset)):
+            total_count += 1
             try:
                 yield input_dataset[i]
             except self.exceptions as e:
+                catched_count += 1
                 if self.warn:
                     msg = repr(e)
                     LOG.warning(msg)
+        if catched_count > 0:
+            types = ', '.join([exception.__name__ for exception in self.exceptions]) \
+                if isinstance(self.exceptions, (list, tuple)) \
+                else self.exceptions.__name__
+            LOG.info(f'{self.__class__.__name__} filtered {catched_count} of {total_count} examples (catched expections: {types}).')
 
 
 class PrefetchDataset(Dataset):
@@ -1873,6 +1884,8 @@ class PrefetchDataset(Dataset):
                 except catch_filter_exception:
                     return unique_object
 
+            catched_count = 0
+            total_count = 0
             for data in lazy_parallel_map(
                 catcher,
                 range(len(self.input_dataset)),
@@ -1880,10 +1893,16 @@ class PrefetchDataset(Dataset):
                 max_workers=self.num_workers,
                 backend=self.backend,
             ):
+                total_count += 1
                 if data is unique_object:
-                    pass
+                    catched_count += 1
                 else:
                     yield data
+            if catched_count > 0:
+                types = ', '.join([exception.__name__ for exception in catch_filter_exception]) \
+                    if isinstance(catch_filter_exception, (list, tuple)) \
+                    else catch_filter_exception.__name__
+                LOG.info(f'{self.__class__.__name__} filtered {catched_count} of {total_count} examples (catched exceptions: {types}).')
 
     def _single_thread_prefetch(self):
         """
@@ -2193,9 +2212,16 @@ class FilterDataset(Dataset):
         return f'{self.__class__.__name__}({self.filter_function})'
 
     def __iter__(self):
+        filtered_count = 0
+        total_count = 0
         for example in self.input_dataset:
+            total_count += 1
             if self.filter_function(example):
                 yield example
+            else:
+                filtered_count += 1
+        if filtered_count > 0:
+            LOG.info(f'{self.__class__.__name__} filtered {filtered_count} of {total_count} examples.')
 
     def __getitem__(self, key):
         assert isinstance(key, str), (
@@ -2825,7 +2851,6 @@ class DynamicBucketDataset(Dataset):
     >>> batch_dataset = DynamicBucketDataset(\
     examples, DynamicTimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.5, drop_incomplete=True)
     >>> [batch for batch in batch_dataset]
-    Dropped 1 examples
     [[10, 5], [7, 8], [1, 2]]
     >>> batch_dataset = DynamicBucketDataset(\
     examples, DynamicTimeSeriesBucket, batch_size=2, len_key=lambda x: x, max_padding_rate=0.2)
@@ -2873,6 +2898,7 @@ class DynamicBucketDataset(Dataset):
     def copy(self, freeze=False):
         return self.__class__(
             input_dataset=self.input_dataset.copy(freeze=freeze),
+            bucket_cls=self.bucket_cls,
             expiration=self.expiration,
             drop_incomplete=self.drop_incomplete,
             sort_key=self.sort_key,
@@ -2892,7 +2918,9 @@ class DynamicBucketDataset(Dataset):
     def __iter__(self):
         buckets = list()
         dropped_count = 0
+        total_count = 0
         for i, example in enumerate(self.input_dataset):
+            total_count += 1
             bucket = None
             for j, (bucket_j, _) in enumerate(buckets):
                 if bucket_j.maybe_append(example):
@@ -2932,7 +2960,7 @@ class DynamicBucketDataset(Dataset):
             else:
                 dropped_count += len(data)
         if dropped_count > 0:
-            print(f'Dropped {dropped_count} examples')
+            LOG.info(f'{self.__class__.__name__} dropped {dropped_count} of {total_count} examples.')
 
 
 class _CacheWrapper:
@@ -3080,8 +3108,7 @@ class _DiskCacheWrapper:
         if cache_dir is not None and Path(cache_dir).is_dir() and len(
                 list(Path(cache_dir).glob('*'))) > 0:
             if reuse:
-                print(f'Cache dir "{cache_dir}" already exists. Re-using '
-                      f'stored data.')
+                LOG.info(f'Cache dir "{cache_dir}" already exists. Re-using stored data.')
             else:
                 raise RuntimeError(
                     f'Cache dir "{cache_dir}" already exists! Either remove '
