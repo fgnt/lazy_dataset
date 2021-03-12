@@ -647,7 +647,8 @@ class Dataset:
                     'indexable.'
                 )
             idx = [i for i, e in enumerate(self) if filter_fn(e)]
-            LOG.info(f'Filtered {len(self)-len(idx)} from {len(self)} examples.')
+            if len(self) > len(idx):
+                LOG.info(f'Filtered {len(self)-len(idx)} of {len(self)} examples.')
             return self[idx]
 
     def catch(self, exceptions=FilterException,
@@ -1774,7 +1775,9 @@ class CatchExceptionDataset(Dataset):
     def __iter__(self):
         input_dataset = self.input_dataset.copy(freeze=True)
         catched_count = 0
+        total_count = 0
         for i in range(len(input_dataset)):
+            total_count += 1
             try:
                 yield input_dataset[i]
             except self.exceptions as e:
@@ -1783,10 +1786,10 @@ class CatchExceptionDataset(Dataset):
                     msg = repr(e)
                     LOG.warning(msg)
         if catched_count > 0:
-            types = [exception.__name__ for exception in self.exceptions] \
+            types = ','.join([exception.__name__ for exception in self.exceptions]) \
                 if isinstance(self.exceptions, (list, tuple)) \
                 else self.exceptions.__name__
-            LOG.info(f'CatchExceptionDataset catched {catched_count} exceptions of type {types}.')
+            LOG.info(f'CatchExceptionDataset filtered {catched_count} of {total_count} examples (catched expections: {types}).')
 
 
 class PrefetchDataset(Dataset):
@@ -1868,7 +1871,6 @@ class PrefetchDataset(Dataset):
                 backend=self.backend,
             )
         else:
-            catched_count = 0
             if self.catch_filter_exception is True:
                 catch_filter_exception = FilterException
             else:
@@ -1882,6 +1884,8 @@ class PrefetchDataset(Dataset):
                 except catch_filter_exception:
                     return unique_object
 
+            catched_count = 0
+            total_count = 0
             for data in lazy_parallel_map(
                 catcher,
                 range(len(self.input_dataset)),
@@ -1889,15 +1893,16 @@ class PrefetchDataset(Dataset):
                 max_workers=self.num_workers,
                 backend=self.backend,
             ):
+                total_count += 1
                 if data is unique_object:
                     catched_count += 1
                 else:
                     yield data
             if catched_count > 0:
-                types = [exception.__name__ for exception in catch_filter_exception] \
+                types = ','.join([exception.__name__ for exception in catch_filter_exception]) \
                     if isinstance(catch_filter_exception, (list, tuple)) \
                     else catch_filter_exception.__name__
-                LOG.info(f'PrefetchDataset catched {catched_count} exceptions of type {types}.')
+                LOG.info(f'PrefetchDataset filtered {catched_count} of {total_count} examples (catched exceptions: {types}).')
 
     def _single_thread_prefetch(self):
         """
@@ -2215,7 +2220,8 @@ class FilterDataset(Dataset):
                 yield example
             else:
                 filtered_count += 1
-        LOG.info(f'FilterDataset filtered {filtered_count} from {total_count} examples.')
+        if filtered_count > 0:
+            LOG.info(f'FilterDataset filtered {filtered_count} of {total_count} examples.')
 
     def __getitem__(self, key):
         assert isinstance(key, str), (
@@ -2912,7 +2918,9 @@ class DynamicBucketDataset(Dataset):
     def __iter__(self):
         buckets = list()
         dropped_count = 0
+        total_count = 0
         for i, example in enumerate(self.input_dataset):
+            total_count += 1
             bucket = None
             for j, (bucket_j, _) in enumerate(buckets):
                 if bucket_j.maybe_append(example):
@@ -2952,7 +2960,7 @@ class DynamicBucketDataset(Dataset):
             else:
                 dropped_count += len(data)
         if dropped_count > 0:
-            LOG.info(f'DynamicBucketDataset dropped {dropped_count} examples')
+            LOG.info(f'DynamicBucketDataset dropped {dropped_count} of {total_count} examples.')
 
 
 class _CacheWrapper:
