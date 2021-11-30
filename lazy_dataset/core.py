@@ -5,6 +5,7 @@ import textwrap
 import operator
 from copy import deepcopy
 import itertools
+import functools
 import random
 import collections
 from pathlib import Path
@@ -1595,7 +1596,11 @@ class ListDataset(Dataset):
             return f'{self.__class__.__name__}' \
                    f'(name={self.name}, len={len(self)})'
 
-    def __iter__(self):
+    def __iter__(self, with_key=False):
+        if with_key:
+            raise NotImplementedError(
+                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+
         yield from self.examples
 
     def __getitem__(self, item):
@@ -1682,6 +1687,14 @@ class MapDataset(Dataset):
 class ParMapDataset(MapDataset):
     """
     Should this dataset support getitem? Getitem disables the buffer.
+
+    >>> ds = new({'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5, 'f': 6})
+    >>> def foo(ex): return ex
+    >>> ds = ds.map(foo, num_workers=2, buffer_size=4)
+    >>> list(ds)
+    [1, 2, 3, 4, 5, 6]
+    >>> list(ds.items())
+    [('a', 1), ('b', 2), ('c', 3), ('d', 4), ('e', 5), ('f', 6)]
     """
 
     def __init__(
@@ -1703,16 +1716,33 @@ class ParMapDataset(MapDataset):
             backend=self.backend,
         )
 
-    def __iter__(self):
-        from lazy_dataset.parallel_utils import lazy_parallel_map
+    @staticmethod
+    def _with_key_map_function(key_ex, func):
+        # Avoid a lambda function, because it makes problems with
+        # multiprocessing.
+        key, ex = key_ex
+        ex = func(ex)
+        return key, ex
 
-        return lazy_parallel_map(
-            self.map_function,
-            self.input_dataset,
-            buffer_size=self.buffer_size,
-            max_workers=self.num_workers,
-            backend=self.backend,
-        )
+    def __iter__(self, with_key=False):
+        from lazy_dataset.parallel_utils import lazy_parallel_map
+        if with_key:
+            return lazy_parallel_map(
+                functools.partial(
+                    self._with_key_map_function, func=self.map_function),
+                self.input_dataset.__iter__(with_key=True),
+                buffer_size=self.buffer_size,
+                max_workers=self.num_workers,
+                backend=self.backend,
+            )
+        else:
+            return lazy_parallel_map(
+                self.map_function,
+                self.input_dataset,
+                buffer_size=self.buffer_size,
+                max_workers=self.num_workers,
+                backend=self.backend,
+            )
 
 
 class _BatchMapWrapper:
@@ -2231,13 +2261,13 @@ class SliceDataset(Dataset):
             for idx in self.slice:
                 yield self.input_dataset[idx]
 
-    def __getitem__(self, key):
-        if isinstance(key, str):
-            return self.input_dataset[key]
-        elif isinstance(key, numbers.Integral):
-            return self.input_dataset[self.slice[key]]
+    def __getitem__(self, item):
+        if isinstance(item, str):
+            return self.input_dataset[item]
+        elif isinstance(item, numbers.Integral):
+            return self.input_dataset[self.slice[item]]
         else:
-            return super().__getitem__(key)
+            return super().__getitem__(item)
 
 
 class FilterDataset(Dataset):
@@ -2296,16 +2326,16 @@ class FilterDataset(Dataset):
         if filtered_count > 0:
             LOG.info(f'{self.__class__.__name__} filtered {filtered_count} of {total_count} examples.')
 
-    def __getitem__(self, key):
-        assert isinstance(key, str), (
-            f'key == {key!r}\n{self.__class__} does not support __getitem__ '
-            f'for type(key) == {type(key)},\n'
+    def __getitem__(self, item):
+        assert isinstance(item, str), (
+            f'key == {item!r}\n{self.__class__} does not support __getitem__ '
+            f'for type(key) == {type(item)},\n'
             f'Only type str is allowed.\n'
             f'self:\n{repr(self)}'
         )
-        ex = self.input_dataset[key]
+        ex = self.input_dataset[item]
         if not self.filter_function(ex):
-            raise IndexError(key)
+            raise IndexError(item)
         return ex
 
 
@@ -2848,14 +2878,14 @@ class BatchDataset(Dataset):
         if len(current_batch) > 0 and not self.drop_last:
             yield current_batch
 
-    def __getitem__(self, index):
-        if isinstance(index, numbers.Integral):
-            if index < 0:
+    def __getitem__(self, item):
+        if isinstance(item, numbers.Integral):
+            if item < 0:
                 # only touch len when necessary
-                index = index + len(self)
-                if index < 0:
-                    raise IndexError(index - len(self))
-            input_index = index * self.batch_size
+                item = item + len(self)
+                if item < 0:
+                    raise IndexError(item - len(self))
+            input_index = item * self.batch_size
             current_batch = []
             for i in range(self.batch_size):
                 try:
@@ -2869,7 +2899,7 @@ class BatchDataset(Dataset):
         # elif isinstance(index, str):
         # ToDo: allow merge/collate keys -> allows __getitem__(str)
         else:
-            return super().__getitem__(index)
+            return super().__getitem__(item)
 
     def __len__(self):
         length = len(self.input_dataset) / self.batch_size
