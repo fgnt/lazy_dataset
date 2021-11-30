@@ -12,7 +12,7 @@ import time
 import datetime
 
 import numpy as np
-from typing import Optional, Union, Any, List, Dict, Tuple
+from typing import Optional, Union, Any, List, Dict, Tuple, Generator
 
 LOG = logging.getLogger('lazy_dataset')
 
@@ -314,7 +314,25 @@ class Dataset:
         """
         raise NotImplementedError
 
-    def __iter__(self):
+    def __iter__(self, with_key=False):
+        if with_key:
+            # The ItemsDataset calls `__iter__(with_key=True)` to get the key
+            # and the value of the dataset. The motivation is, that some
+            # Datasets, e.g. FilterDataset, can yield key and value, while
+            # keys is not known, because they depend von value.
+
+            # Note: Consider the execution time, when implementing the
+            # `__iter__` for a function, e.g. try to check only once, if
+            # with_key is False and not inside the loop every time.
+
+            # To be backward compatible, this function is called with:
+            # `__iter__(self)` or `__iter_`_(self, with_key=True)`.
+            # So Datasets can implement `__iter__` without `with_key`, when
+            # it is not supported.
+            raise NotImplementedError(
+                f'{self.__class__} does not support `.items()`.\n'
+                f'self: \n{repr(self)}'
+            )
         raise NotImplementedError(
             f'__iter__ is not implemented for {self.__class__}.\n'
             f'self: \n{repr(self)}'
@@ -380,7 +398,7 @@ class Dataset:
             f'self: \n{repr(self)}'
         )
 
-    def items(self) -> List[tuple]:
+    def items(self) -> 'Dataset':
         """
         Returns:
              A `list` of key-value pairs (`tuple`s) like `dict.items()`.
@@ -394,8 +412,7 @@ class Dataset:
             >>> list(ds.items())
             [('a', {'d': 1}), ('b', {'e': 1}), ('c', {'f': 1})]
         """
-        dataset = DictDataset(dict(zip(self.keys(), self.keys())))
-        return dataset.key_zip(self)
+        return ItemsDataset(self)
 
     def __contains__(self, item):
         # contains is not well defined for dataset, because dataset is a
@@ -772,12 +789,10 @@ class Dataset:
             >>> ds4 = ds3.map(lambda example: {**example[0], **example[1]})
             >>> ds4  # doctest: +ELLIPSIS
                     DictDataset(len=2)
-                    DictDataset(len=2)
-                  KeyZipDataset()
+                  ItemsDataset()
                 MapDataset(<function <lambda> at ...>)
                     DictDataset(len=2)
-                    DictDataset(len=2)
-                  KeyZipDataset()
+                  ItemsDataset()
                 MapDataset(<function <lambda> at ...>)
               ZipDataset()
             MapDataset(<function <lambda> at ...>)
@@ -826,12 +841,10 @@ class Dataset:
             >>> ds4 = ds3.map(lambda example: {**example[0], **example[1]})
             >>> ds4  # doctest: +ELLIPSIS
                     DictDataset(len=2)
-                    DictDataset(len=2)
-                  KeyZipDataset()
+                  ItemsDataset()
                 MapDataset(<function <lambda> at ...>)
                     DictDataset(len=2)
-                    DictDataset(len=2)
-                  KeyZipDataset()
+                  ItemsDataset()
                 MapDataset(<function <lambda> at ...>)
               KeyZipDataset()
             MapDataset(<function <lambda> at ...>)
@@ -883,8 +896,7 @@ class Dataset:
             >>> ds = ds.shuffle(False)
             >>> ds  # doctest: +ELLIPSIS
                   DictDataset(len=3)
-                  DictDataset(len=3)
-                KeyZipDataset()
+                ItemsDataset()
               MapDataset(<function <lambda> at ...>)
             SliceDataset([0 2 1])
             >>> list(ds)
@@ -1526,9 +1538,13 @@ class DictDataset(Dataset):
     def keys(self):
         return self._keys
 
-    def __iter__(self):
-        for k in self.keys():
-            yield self[k]
+    def __iter__(self, with_key=False):
+        if with_key:
+            for k in self.keys():
+                yield k, self[k]
+        else:
+            for k in self.keys():
+                yield self[k]
 
     def __getitem__(self, item):
         if isinstance(item, str):
@@ -1646,8 +1662,12 @@ class MapDataset(Dataset):
     def __len__(self):
         return len(self.input_dataset)
 
-    def __iter__(self):
-        yield from map(self.map_function, self.input_dataset)
+    def __iter__(self, with_key=False):
+        if with_key:
+            for k, v in self.input_dataset.__iter__(with_key=True):
+                yield k, self.map_function(v)
+        else:
+            yield from map(self.map_function, self.input_dataset)
 
     def keys(self):
         return self.input_dataset.keys()
@@ -1772,19 +1792,30 @@ class CatchExceptionDataset(Dataset):
         else:
             return super().__getitem__(item)
 
-    def __iter__(self):
+    def __iter__(self, with_key=False):
         input_dataset = self.input_dataset.copy(freeze=True)
         catched_count = 0
         total_count = 0
-        for i in range(len(input_dataset)):
-            total_count += 1
-            try:
-                yield input_dataset[i]
-            except self.exceptions as e:
-                catched_count += 1
-                if self.warn:
-                    msg = repr(e)
-                    LOG.warning(msg)
+        if with_key:
+            for k in input_dataset.keys():
+                total_count += 1
+                try:
+                    yield k, input_dataset[k]
+                except self.exceptions as e:
+                    catched_count += 1
+                    if self.warn:
+                        msg = repr(e)
+                        LOG.warning(msg)
+        else:
+            for i in range(len(input_dataset)):
+                total_count += 1
+                try:
+                    yield input_dataset[i]
+                except self.exceptions as e:
+                    catched_count += 1
+                    if self.warn:
+                        msg = repr(e)
+                        LOG.warning(msg)
         if catched_count > 0:
             types = ', '.join([exception.__name__ for exception in self.exceptions]) \
                 if isinstance(self.exceptions, (list, tuple)) \
@@ -1852,7 +1883,7 @@ class PrefetchDataset(Dataset):
         else:
             return len(self.input_dataset)
 
-    def __iter__(self):
+    def __iter__(self, with_key=False):
         if self.num_workers == 1 and self.backend == 't':
             yield from self._single_thread_prefetch()
             return
@@ -1862,10 +1893,21 @@ class PrefetchDataset(Dataset):
 
         from lazy_dataset.parallel_utils import lazy_parallel_map
 
+        if with_key:
+            iterable = self.keys()
+        else:
+            iterable = range(len(self.input_dataset))
+
         if not self.catch_filter_exception:
+            if with_key:
+                def function(key):
+                    return key, input_dataset[key]
+            else:
+                function = input_dataset.__getitem__
+
             yield from lazy_parallel_map(
-                input_dataset.__getitem__,
-                range(len(self.input_dataset)),
+                function,
+                iterable,
                 buffer_size=self.buffer_size,
                 max_workers=self.num_workers,
                 backend=self.backend,
@@ -1878,17 +1920,24 @@ class PrefetchDataset(Dataset):
 
             unique_object = object()
 
-            def catcher(index):
-                try:
-                    return input_dataset[index]
-                except catch_filter_exception:
-                    return unique_object
+            if with_key:
+                def catcher(key):
+                    try:
+                        return key, input_dataset[key]
+                    except catch_filter_exception:
+                        return unique_object
+            else:
+                def catcher(index):
+                    try:
+                        return input_dataset[index]
+                    except catch_filter_exception:
+                        return unique_object
 
             catched_count = 0
             total_count = 0
             for data in lazy_parallel_map(
                 catcher,
-                range(len(self.input_dataset)),
+                iterable,
                 buffer_size=self.buffer_size,
                 max_workers=self.num_workers,
                 backend=self.backend,
@@ -1996,9 +2045,15 @@ class ReShuffleDataset(Dataset):
     # def keys(self):
     #     return frozenset(self.input_dataset.keys())
 
-    def __iter__(self):
-        for idx in self.permutation:
-            yield self.input_dataset[idx]
+    def __iter__(self, with_key=False):
+        if with_key:
+            keys = self.input_dataset.keys()
+            for idx in self.permutation:
+                k = keys[idx]
+                yield k, self.input_dataset[idx]
+        else:
+            for idx in self.permutation:
+                yield self.input_dataset[idx]
 
     def __getitem__(self, item):
         if isinstance(item, str):
@@ -2045,9 +2100,14 @@ class LocalShuffleDataset(Dataset):
     def __len__(self):
         return len(self.input_dataset)
 
-    def __iter__(self):
+    def __iter__(self, with_key=False):
         buffer = list()
-        for element in self.input_dataset:
+        if with_key:
+            iterator = iter(self.input_dataset)
+        else:
+            iterator = self.input_dataset.__iter__(with_key=True)
+
+        for element in iterator:
             buffer.append(element)
             if len(buffer) >= self.buffer_size:
                 yield buffer.pop(int(np.random.choice(self.buffer_size)))
@@ -2162,9 +2222,14 @@ class SliceDataset(Dataset):
 
         return f'{self.__class__.__name__}({slice_str})'
 
-    def __iter__(self):
-        for idx in self.slice:
-            yield self.input_dataset[idx]
+    def __iter__(self, with_key=False):
+        if with_key:
+            keys = self.input_dataset.keys()
+            for idx in self.slice:
+                yield keys[idx], self.input_dataset[idx]
+        else:
+            for idx in self.slice:
+                yield self.input_dataset[idx]
 
     def __getitem__(self, key):
         if isinstance(key, str):
@@ -2211,15 +2276,23 @@ class FilterDataset(Dataset):
     def __str__(self):
         return f'{self.__class__.__name__}({self.filter_function})'
 
-    def __iter__(self):
+    def __iter__(self, with_key=False):
         filtered_count = 0
         total_count = 0
-        for example in self.input_dataset:
-            total_count += 1
-            if self.filter_function(example):
-                yield example
-            else:
-                filtered_count += 1
+        if with_key:
+            for key, example in self.input_dataset.__iter__(with_key=True):
+                total_count += 1
+                if self.filter_function(example):
+                    yield key, example
+                else:
+                    filtered_count += 1
+        else:
+            for example in self.input_dataset:
+                total_count += 1
+                if self.filter_function(example):
+                    yield example
+                else:
+                    filtered_count += 1
         if filtered_count > 0:
             LOG.info(f'{self.__class__.__name__} filtered {filtered_count} of {total_count} examples.')
 
@@ -2267,9 +2340,13 @@ class ConcatenateDataset(Dataset):
     def ordered(self) -> bool:
         return all(ds.ordered for ds in self.input_datasets)
 
-    def __iter__(self):
+    def __iter__(self, with_key=False):
         for input_dataset in self.input_datasets:
-            for example in input_dataset:
+            if with_key:
+                iterable = input_dataset.__iter__(with_key=True)
+            else:
+                iterable = input_dataset
+            for example in iterable:
                 yield example
 
     def __len__(self):
@@ -2445,8 +2522,12 @@ class IntersperseDataset(Dataset):
     def ordered(self) -> bool:
         return all(ds.ordered for ds in self.input_datasets)
 
-    def __iter__(self):
-        iterators = [iter(ds) for ds in self.input_datasets]
+    def __iter__(self, with_key=False):
+        if with_key:
+            iterators = [
+                ds.__iter__(with_key=True) for ds in self.input_datasets]
+        else:
+            iterators = [iter(ds) for ds in self.input_datasets]
         for _, dataset_idx, _ in self.order:
             yield next(iterators[dataset_idx])
 
@@ -2498,7 +2579,10 @@ class ZipDataset(Dataset):
     def ordered(self) -> bool:
         return all(ds.ordered for ds in self.input_datasets)
 
-    def __iter__(self):
+    def __iter__(self, with_key=False):
+        if with_key:
+            raise NotImplementedError(
+                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
         for examples in zip(*self.input_datasets):
             yield examples
 
@@ -2562,12 +2646,19 @@ class KeyZipDataset(Dataset):
     def ordered(self) -> bool:
         return True
 
-    def __iter__(self):
-        for key in self.keys():
-            yield tuple([
-                ds[key]
-                for ds in self.input_datasets
-            ])
+    def __iter__(self, with_key=False):
+        if with_key:
+            for key in self.keys():
+                yield key, tuple([
+                    ds[key]
+                    for ds in self.input_datasets
+                ])
+        else:
+            for key in self.keys():
+                yield tuple([
+                    ds[key]
+                    for ds in self.input_datasets
+                ])
 
     def __len__(self):
         return len(self.input_datasets[0])
@@ -2589,6 +2680,90 @@ class KeyZipDataset(Dataset):
             ])
         else:
             return super().__getitem__(item)
+
+
+class ItemsDataset(Dataset):
+    """
+    >>> ds_plain = new({'a': 1, 'b': 2, 'c': 3})
+    >>> ds = ds_plain.filter(lambda x: True).items()
+    >>> ds  # doctest: +ELLIPSIS
+          DictDataset(len=3)
+        MapDataset(_pickle.loads)
+      FilterDataset(<function <lambda> at 0x...>)
+    ItemsDataset()
+    >>> list(ds)
+    [('a', 1), ('b', 2), ('c', 3)]
+
+    >>> ds = ds_plain.shuffle(True, rng=np.random.RandomState(0)).items()
+    >>> list(ds)
+    [('c', 3), ('b', 2), ('a', 1)]
+    >>> list(ds)
+    [('a', 1), ('c', 3), ('b', 2)]
+
+    >>> ds_nokeys = ds_plain.filter(lambda x: True)  # No keys and no len
+    >>> ds_nokeys_rng = ds_plain.shuffle(True, rng=np.random.RandomState(0))  # No keys
+    >>> list(ds_nokeys.map(lambda x: x + 10).items())
+    [('a', 11), ('b', 12), ('c', 13)]
+    >>> list(ds_nokeys.concatenate(ds_plain).items())
+    [('a', 1), ('b', 2), ('c', 3), ('a', 1), ('b', 2), ('c', 3)]
+    >>> list(ds_nokeys_rng.intersperse(ds_nokeys_rng).items())
+    [('c', 3), ('a', 1), ('c', 3), ('c', 3), ('b', 2), ('b', 2)]
+    >>> list(ds_plain.key_zip(ds_plain).items())
+    [('a', (1, 1)), ('b', (2, 2)), ('c', (3, 3))]
+    >>> list(ds_nokeys_rng.catch().items())
+    [('a', 1), ('b', 2), ('c', 3)]
+    >>> list(ds_plain[:2].items())
+    [('a', 1), ('b', 2)]
+
+    >>> ds_plain[:2].items()[0]
+    ('a', 1)
+    >>> ds_plain[:2].items()['a']
+    ('a', 1)
+
+    """
+    def __init__(self, input_dataset):
+        self.input_dataset = input_dataset
+        # ToDo: assert input_dataset supports .items(), at the moment we have
+        #       no property that indicate this.
+
+    def copy(self, freeze=False):
+        return self.__class__(self.input_dataset.copy(freeze=freeze))
+
+    @property
+    def indexable(self):
+        return self.input_dataset.indexable
+
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
+    def keys(self):
+        return self.input_dataset.keys()
+
+    def __getitem__(self, item):
+        if isinstance(item, str):
+            return item, self.input_dataset[self.keys().index(item)]
+        elif isinstance(item, numbers.Integral):
+            return self.keys()[item], self.input_dataset[item]
+        else:
+            return super().__getitem__(item)
+
+    def __len__(self):
+        return len(self.input_dataset)
+
+    def __iter__(self, with_key=False):
+        """
+        >>> ds = new({'a': 1, 'b': 2, 'c': 3})
+        >>> list(ds.items())
+        [('a', 1), ('b', 2), ('c', 3)]
+        >>> list(ds.items().items())
+        [('a', ('a', 1)), ('b', ('b', 2)), ('c', ('c', 3))]
+        """
+        if with_key:
+            for k, v in self:
+                yield k, (k, v)
+        else:
+            yield from self.input_dataset.__iter__(with_key=True)
 
 
 class BatchDataset(Dataset):
@@ -2660,9 +2835,12 @@ class BatchDataset(Dataset):
     def __str__(self):
         return f'{self.__class__.__name__}(batch_size={self.batch_size})'
 
-    def __iter__(self):
+    def __iter__(self, with_key=False):
+        if with_key:
+            raise NotImplementedError(
+                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
         current_batch = list()
-        for element in self.input_dataset():
+        for element in self.input_dataset:
             current_batch.append(element)
             if len(current_batch) >= self.batch_size:
                 yield current_batch
@@ -2735,7 +2913,11 @@ class UnbatchDataset(Dataset):
     def ordered(self) -> bool:
         return self.input_dataset.ordered
 
-    def __iter__(self):
+    def __iter__(self, with_key=False):
+        if with_key:
+            raise NotImplementedError(
+                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+
         for batch in self.input_dataset:
             # Don't support `dict` and `str`.
             # While
@@ -2915,7 +3097,10 @@ class DynamicBucketDataset(Dataset):
         # This is only true if the bucket is deterministic!
         return self.input_dataset.ordered
 
-    def __iter__(self):
+    def __iter__(self, with_key=False):
+        if with_key:
+            raise NotImplementedError(
+                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
         buckets = list()
         dropped_count = 0
         total_count = 0
@@ -3058,9 +3243,14 @@ class CacheDataset(Dataset):
             # Support for slices etc.
             return super().__getitem__(item)
 
-    def __iter__(self):
-        for i in range(len(self)):
-            yield self[i]
+    def __iter__(self, with_key=False):
+        if with_key:
+            keys = self.keys()
+            for i in range(len(self)):
+                yield keys[i], self[i]
+        else:
+            for i in range(len(self)):
+                yield self[i]
 
     def __len__(self):
         return len(self.input_dataset)
@@ -3216,6 +3406,7 @@ class ProfilingDataset(Dataset):
 
     Example:
         >>> import lazy_dataset
+        >>> from lazy_dataset.core import ProfilingDataset
         >>> ds = lazy_dataset.new({'a': 1, 'b': 2, 'c': 3})
         >>> def sleep(ex):
         ...     time.sleep(1)
@@ -3223,7 +3414,7 @@ class ProfilingDataset(Dataset):
         >>> ds_copy = ProfilingDataset(ds.map(sleep))
         >>> _ = list(ds_copy)
         >>> print(repr(ds_copy))  # doctest: +ELLIPSIS
-            DictDataset(len=3) (fetch duration = 0:00:00.0000..., hits = 3)
+            DictDataset(len=3) (fetch duration = 0:00:00.000..., hits = 3)
           MapDataset(_pickle.loads) (fetch duration = 0:00:00.000..., hits = 3)
         MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:03.00..., hits = 3)
         >>> ds_copy = ProfilingDataset(ds.map(sleep).prefetch(4, 8))
@@ -3246,6 +3437,14 @@ class ProfilingDataset(Dataset):
           MapDataset(<function sleep at 0x...>) (fetch duration = 0:00:02.0..., hits = 3 (1 filtered))
         CatchExceptionDataset() (fetch duration = 0:00:02.0..., hits = 2)
 
+        >>> ds_copy = ProfilingDataset(ds.map(f).items().catch(FilterException))
+        >>> _ = list(ds_copy)
+        >>> print(repr(ds_copy))  # doctest: +ELLIPSIS
+                DictDataset(len=3) (fetch duration = 0:00:00.00..., hits = 3)
+              MapDataset(_pickle.loads) (fetch duration = 0:00:00.00..., hits = 3)
+            MapDataset(<function f at 0x...>) (fetch duration = 0:00:00.00..., hits = 3 (1 filtered))
+          ItemsDataset() (fetch duration = 0:00:00.00..., hits = 3 (1 filtered))
+        CatchExceptionDataset() (fetch duration = 0:00:00.00..., hits = 2)
     """
     # alternative time.process_time
     timestamp = staticmethod(time.perf_counter)
@@ -3297,7 +3496,13 @@ class ProfilingDataset(Dataset):
     def indexable(self):
         return self.input_dataset.indexable()
 
-    def __iter__(self):
+    def keys(self):
+        return self.input_dataset.keys()
+
+    def __iter__(self, with_key=False):
+        if with_key:
+            raise NotImplementedError(
+                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
         it = iter(self.input_dataset)
         while True:
             start = self.timestamp()
