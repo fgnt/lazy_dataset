@@ -330,10 +330,11 @@ class Dataset:
             # `__iter__(self)` or `__iter_`_(self, with_key=True)`.
             # So Datasets can implement `__iter__` without `with_key`, when
             # it is not supported.
-            raise NotImplementedError(
-                f'{self.__class__} does not support `.items()`.\n'
-                f'self: \n{repr(self)}'
-            )
+
+            # If a dataset does not support with_key==True, it should raise a
+            # `_ItemsNotDefined(self.__class__.__name__)`. ItemDataset will
+            # improve msg the exception.
+            raise _ItemsNotDefined(self.__class__.__name__)
         raise NotImplementedError(
             f'__iter__ is not implemented for {self.__class__}.\n'
             f'self: \n{repr(self)}'
@@ -2611,8 +2612,7 @@ class ZipDataset(Dataset):
 
     def __iter__(self, with_key=False):
         if with_key:
-            raise NotImplementedError(
-                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+            raise _ItemsNotDefined(self.__class__.__name__)
         for examples in zip(*self.input_datasets):
             yield examples
 
@@ -2712,6 +2712,25 @@ class KeyZipDataset(Dataset):
             return super().__getitem__(item)
 
 
+class ItemsNotDefined(Exception):
+    """
+    Special Exception for the Dataset to indicate that a dataset does not
+    support items.
+    """
+    pass
+
+
+class _ItemsNotDefined(BaseException):
+    """
+    Special Exception for the Dataset to indicate that a dataset does not
+    support items.
+
+    This is the internal exception, that shouldn't be caught by the user or
+    the `dataset.catch(Exception)`, hence base class is BaseException.
+    """
+    pass
+
+
 class ItemsDataset(Dataset):
     """
     >>> ds_plain = new({'a': 1, 'b': 2, 'c': 3})
@@ -2793,7 +2812,16 @@ class ItemsDataset(Dataset):
             for k, v in self:
                 yield k, (k, v)
         else:
-            yield from self.input_dataset.__iter__(with_key=True)
+            try:
+                yield from self.input_dataset.__iter__(with_key=True)
+            except _ItemsNotDefined as e:
+                # `[].items()` raises AttributeError, but here we raise the
+                # error later.
+                raise ItemsNotDefined(
+                    f'`.items()` can only be used, when each input dataset\n'
+                    f"supports `.items()`. At least one doesn't support it.\n"
+                    f'self: \n{repr(self)}'
+                ) from e
 
 
 class BatchDataset(Dataset):
@@ -2867,8 +2895,7 @@ class BatchDataset(Dataset):
 
     def __iter__(self, with_key=False):
         if with_key:
-            raise NotImplementedError(
-                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+            raise _ItemsNotDefined(self.__class__.__name__)
         current_batch = list()
         for element in self.input_dataset:
             current_batch.append(element)
@@ -2945,8 +2972,7 @@ class UnbatchDataset(Dataset):
 
     def __iter__(self, with_key=False):
         if with_key:
-            raise NotImplementedError(
-                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+            raise _ItemsNotDefined(self.__class__.__name__)
 
         for batch in self.input_dataset:
             # Don't support `dict` and `str`.
@@ -3129,8 +3155,7 @@ class DynamicBucketDataset(Dataset):
 
     def __iter__(self, with_key=False):
         if with_key:
-            raise NotImplementedError(
-                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+            raise _ItemsNotDefined(self.__class__.__name__)
         buckets = list()
         dropped_count = 0
         total_count = 0
@@ -3531,8 +3556,7 @@ class ProfilingDataset(Dataset):
 
     def __iter__(self, with_key=False):
         if with_key:
-            raise NotImplementedError(
-                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+            raise _ItemsNotDefined(self.__class__.__name__)
         it = iter(self.input_dataset)
         while True:
             start = self.timestamp()
