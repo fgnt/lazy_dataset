@@ -1598,8 +1598,7 @@ class ListDataset(Dataset):
 
     def __iter__(self, with_key=False):
         if with_key:
-            raise NotImplementedError(
-                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+            raise _ItemsNotDefined(self.__class__.__name__)
 
         yield from self.examples
 
