@@ -6,7 +6,6 @@ import operator
 from copy import deepcopy
 import itertools
 import functools
-import random
 import collections
 from pathlib import Path
 import time
@@ -907,13 +906,13 @@ class Dataset:
             ('a', 'c', 'b')
         """
         # TODO: Should reshuffle default be True or False
+        rng = np.random if rng is None else rng
+
         if buffer_size is not None:
             assert reshuffle is True, ('LocalShuffleDataset only supports '
                                        'reshuffle')
-            assert rng is None, 'LocalShuffleDataset does not support seeds.'
-            return LocalShuffleDataset(self, buffer_size=buffer_size)
+            return LocalShuffleDataset(self, buffer_size=buffer_size, rng=rng)
 
-        rng = np.random if rng is None else rng
         if reshuffle is True:
             return ReShuffleDataset(self, rng=rng)
         elif reshuffle is False:
@@ -2108,11 +2107,36 @@ class LocalShuffleDataset(Dataset):
     support indexing
     Note:
         This Dataset reshuffles each iteration, but does not support indexing.
+
+
+    >>> ds_list = new([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    >>> np.random.seed(0)
+    >>> ds = ds_list.shuffle(reshuffle=True, buffer_size=3)
+    >>> ds
+        ListDataset(len=13)
+      MapDataset(_pickle.loads)
+    LocalShuffleDataset(buffer_size=3)
+    >>> list(ds)
+    [0, 2, 1, 4, 5, 7, 3, 9, 6, 8, 10, 12, 11]
+    >>> list(ds)
+    [1, 3, 4, 0, 5, 6, 7, 8, 2, 10, 9, 11, 12]
+    >>> ds = ds_list.shuffle(
+    ...     reshuffle=True, buffer_size=3, rng=np.random.RandomState(0))
+    >>> ds
+        ListDataset(len=13)
+      MapDataset(_pickle.loads)
+    LocalShuffleDataset(buffer_size=3, rng=RandomState(MT19937))
+    >>> list(ds)
+    [0, 2, 1, 4, 5, 7, 3, 9, 6, 8, 10, 12, 11]
+    >>> list(ds)
+    [1, 3, 4, 0, 5, 6, 7, 8, 2, 10, 9, 11, 12]
+
     """
 
-    def __init__(self, input_dataset, buffer_size=100):
+    def __init__(self, input_dataset, buffer_size=100, rng=np.random):
         self.input_dataset = input_dataset
         self.buffer_size = buffer_size
+        self.rng = rng
 
     def copy(self, freeze=False):
         return self.__class__(
@@ -2128,21 +2152,29 @@ class LocalShuffleDataset(Dataset):
     def ordered(self) -> bool:
         return False
 
+    def __str__(self):
+        if self.rng == np.random:
+            sig = f'buffer_size={self.buffer_size}'
+        else:
+            sig = f'buffer_size={self.buffer_size}, rng={self.rng}'
+
+        return f'{self.__class__.__name__}({sig})'
+
     def __len__(self):
         return len(self.input_dataset)
 
     def __iter__(self, with_key=False):
         buffer = list()
         if with_key:
-            iterator = iter(self.input_dataset)
-        else:
             iterator = self.input_dataset.__iter__(with_key=True)
+        else:
+            iterator = iter(self.input_dataset)
 
         for element in iterator:
             buffer.append(element)
             if len(buffer) >= self.buffer_size:
-                yield buffer.pop(int(np.random.choice(self.buffer_size)))
-        random.shuffle(buffer)
+                yield buffer.pop(int(self.rng.choice(self.buffer_size)))
+        self.rng.shuffle(buffer)
         for element in buffer:
             yield element
 
