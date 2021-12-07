@@ -66,7 +66,7 @@ def test():
 
     ds = ds_dict.filter(lambda ex: True).cache(lazy=False)
     check(ds, 'MapDataset(_pickle.loads)',
-          '  ListDataset(len=4)\n'
+          '  DictDataset(len=4)\n'
           'MapDataset(_pickle.loads)')
 
     ds = ds_dict.diskcache()
