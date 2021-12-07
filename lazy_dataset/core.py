@@ -5,7 +5,7 @@ import textwrap
 import operator
 from copy import deepcopy
 import itertools
-import random
+import functools
 import collections
 from pathlib import Path
 import time
@@ -329,10 +329,11 @@ class Dataset:
             # `__iter__(self)` or `__iter_`_(self, with_key=True)`.
             # So Datasets can implement `__iter__` without `with_key`, when
             # it is not supported.
-            raise NotImplementedError(
-                f'{self.__class__} does not support `.items()`.\n'
-                f'self: \n{repr(self)}'
-            )
+
+            # If a dataset does not support with_key==True, it should raise a
+            # `_ItemsNotDefined(self.__class__.__name__)`. ItemDataset will
+            # improve msg the exception.
+            raise _ItemsNotDefined(self.__class__.__name__)
         raise NotImplementedError(
             f'__iter__ is not implemented for {self.__class__}.\n'
             f'self: \n{repr(self)}'
@@ -905,13 +906,13 @@ class Dataset:
             ('a', 'c', 'b')
         """
         # TODO: Should reshuffle default be True or False
+        rng = np.random if rng is None else rng
+
         if buffer_size is not None:
             assert reshuffle is True, ('LocalShuffleDataset only supports '
                                        'reshuffle')
-            assert rng is None, 'LocalShuffleDataset does not support seeds.'
-            return LocalShuffleDataset(self, buffer_size=buffer_size)
+            return LocalShuffleDataset(self, buffer_size=buffer_size, rng=rng)
 
-        rng = np.random if rng is None else rng
         if reshuffle is True:
             return ReShuffleDataset(self, rng=rng)
         elif reshuffle is False:
@@ -1595,7 +1596,10 @@ class ListDataset(Dataset):
             return f'{self.__class__.__name__}' \
                    f'(name={self.name}, len={len(self)})'
 
-    def __iter__(self):
+    def __iter__(self, with_key=False):
+        if with_key:
+            raise _ItemsNotDefined(self.__class__.__name__)
+
         yield from self.examples
 
     def __getitem__(self, item):
@@ -1682,6 +1686,14 @@ class MapDataset(Dataset):
 class ParMapDataset(MapDataset):
     """
     Should this dataset support getitem? Getitem disables the buffer.
+
+    >>> ds = new({'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5, 'f': 6})
+    >>> def foo(ex): return ex
+    >>> ds = ds.map(foo, num_workers=2, buffer_size=4)
+    >>> list(ds)
+    [1, 2, 3, 4, 5, 6]
+    >>> list(ds.items())
+    [('a', 1), ('b', 2), ('c', 3), ('d', 4), ('e', 5), ('f', 6)]
     """
 
     def __init__(
@@ -1703,16 +1715,33 @@ class ParMapDataset(MapDataset):
             backend=self.backend,
         )
 
-    def __iter__(self):
-        from lazy_dataset.parallel_utils import lazy_parallel_map
+    @staticmethod
+    def _with_key_map_function(key_ex, func):
+        # Avoid a lambda function, because it makes problems with
+        # multiprocessing.
+        key, ex = key_ex
+        ex = func(ex)
+        return key, ex
 
-        return lazy_parallel_map(
-            self.map_function,
-            self.input_dataset,
-            buffer_size=self.buffer_size,
-            max_workers=self.num_workers,
-            backend=self.backend,
-        )
+    def __iter__(self, with_key=False):
+        from lazy_dataset.parallel_utils import lazy_parallel_map
+        if with_key:
+            return lazy_parallel_map(
+                functools.partial(
+                    self._with_key_map_function, func=self.map_function),
+                self.input_dataset.__iter__(with_key=True),
+                buffer_size=self.buffer_size,
+                max_workers=self.num_workers,
+                backend=self.backend,
+            )
+        else:
+            return lazy_parallel_map(
+                self.map_function,
+                self.input_dataset,
+                buffer_size=self.buffer_size,
+                max_workers=self.num_workers,
+                backend=self.backend,
+            )
 
 
 class _BatchMapWrapper:
@@ -2077,11 +2106,36 @@ class LocalShuffleDataset(Dataset):
     support indexing
     Note:
         This Dataset reshuffles each iteration, but does not support indexing.
+
+
+    >>> ds_list = new([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    >>> np.random.seed(0)
+    >>> ds = ds_list.shuffle(reshuffle=True, buffer_size=3)
+    >>> ds
+        ListDataset(len=13)
+      MapDataset(_pickle.loads)
+    LocalShuffleDataset(buffer_size=3)
+    >>> list(ds)
+    [0, 2, 1, 4, 5, 7, 3, 9, 6, 8, 10, 12, 11]
+    >>> list(ds)
+    [1, 3, 4, 0, 5, 6, 7, 8, 2, 10, 9, 11, 12]
+    >>> ds = ds_list.shuffle(
+    ...     reshuffle=True, buffer_size=3, rng=np.random.RandomState(0))
+    >>> ds
+        ListDataset(len=13)
+      MapDataset(_pickle.loads)
+    LocalShuffleDataset(buffer_size=3, rng=RandomState(MT19937))
+    >>> list(ds)
+    [0, 2, 1, 4, 5, 7, 3, 9, 6, 8, 10, 12, 11]
+    >>> list(ds)
+    [1, 3, 4, 0, 5, 6, 7, 8, 2, 10, 9, 11, 12]
+
     """
 
-    def __init__(self, input_dataset, buffer_size=100):
+    def __init__(self, input_dataset, buffer_size=100, rng=np.random):
         self.input_dataset = input_dataset
         self.buffer_size = buffer_size
+        self.rng = rng
 
     def copy(self, freeze=False):
         return self.__class__(
@@ -2097,21 +2151,29 @@ class LocalShuffleDataset(Dataset):
     def ordered(self) -> bool:
         return False
 
+    def __str__(self):
+        if self.rng == np.random:
+            sig = f'buffer_size={self.buffer_size}'
+        else:
+            sig = f'buffer_size={self.buffer_size}, rng={self.rng}'
+
+        return f'{self.__class__.__name__}({sig})'
+
     def __len__(self):
         return len(self.input_dataset)
 
     def __iter__(self, with_key=False):
         buffer = list()
         if with_key:
-            iterator = iter(self.input_dataset)
-        else:
             iterator = self.input_dataset.__iter__(with_key=True)
+        else:
+            iterator = iter(self.input_dataset)
 
         for element in iterator:
             buffer.append(element)
             if len(buffer) >= self.buffer_size:
-                yield buffer.pop(int(np.random.choice(self.buffer_size)))
-        random.shuffle(buffer)
+                yield buffer.pop(int(self.rng.choice(self.buffer_size)))
+        self.rng.shuffle(buffer)
         for element in buffer:
             yield element
 
@@ -2231,13 +2293,13 @@ class SliceDataset(Dataset):
             for idx in self.slice:
                 yield self.input_dataset[idx]
 
-    def __getitem__(self, key):
-        if isinstance(key, str):
-            return self.input_dataset[key]
-        elif isinstance(key, numbers.Integral):
-            return self.input_dataset[self.slice[key]]
+    def __getitem__(self, item):
+        if isinstance(item, str):
+            return self.input_dataset[item]
+        elif isinstance(item, numbers.Integral):
+            return self.input_dataset[self.slice[item]]
         else:
-            return super().__getitem__(key)
+            return super().__getitem__(item)
 
 
 class FilterDataset(Dataset):
@@ -2296,16 +2358,16 @@ class FilterDataset(Dataset):
         if filtered_count > 0:
             LOG.info(f'{self.__class__.__name__} filtered {filtered_count} of {total_count} examples.')
 
-    def __getitem__(self, key):
-        assert isinstance(key, str), (
-            f'key == {key!r}\n{self.__class__} does not support __getitem__ '
-            f'for type(key) == {type(key)},\n'
+    def __getitem__(self, item):
+        assert isinstance(item, str), (
+            f'key == {item!r}\n{self.__class__} does not support __getitem__ '
+            f'for type(key) == {type(item)},\n'
             f'Only type str is allowed.\n'
             f'self:\n{repr(self)}'
         )
-        ex = self.input_dataset[key]
+        ex = self.input_dataset[item]
         if not self.filter_function(ex):
-            raise IndexError(key)
+            raise IndexError(item)
         return ex
 
 
@@ -2581,8 +2643,7 @@ class ZipDataset(Dataset):
 
     def __iter__(self, with_key=False):
         if with_key:
-            raise NotImplementedError(
-                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+            raise _ItemsNotDefined(self.__class__.__name__)
         for examples in zip(*self.input_datasets):
             yield examples
 
@@ -2682,6 +2743,25 @@ class KeyZipDataset(Dataset):
             return super().__getitem__(item)
 
 
+class ItemsNotDefined(Exception):
+    """
+    Special Exception for the Dataset to indicate that a dataset does not
+    support items.
+    """
+    pass
+
+
+class _ItemsNotDefined(BaseException):
+    """
+    Special Exception for the Dataset to indicate that a dataset does not
+    support items.
+
+    This is the internal exception, that shouldn't be caught by the user or
+    the `dataset.catch(Exception)`, hence base class is BaseException.
+    """
+    pass
+
+
 class ItemsDataset(Dataset):
     """
     >>> ds_plain = new({'a': 1, 'b': 2, 'c': 3})
@@ -2763,7 +2843,16 @@ class ItemsDataset(Dataset):
             for k, v in self:
                 yield k, (k, v)
         else:
-            yield from self.input_dataset.__iter__(with_key=True)
+            try:
+                yield from self.input_dataset.__iter__(with_key=True)
+            except _ItemsNotDefined as e:
+                # `[].items()` raises AttributeError, but here we raise the
+                # error later.
+                raise ItemsNotDefined(
+                    f'`.items()` can only be used, when each input dataset\n'
+                    f"supports `.items()`. At least one doesn't support it.\n"
+                    f'self: \n{repr(self)}'
+                ) from e
 
 
 class BatchDataset(Dataset):
@@ -2837,8 +2926,7 @@ class BatchDataset(Dataset):
 
     def __iter__(self, with_key=False):
         if with_key:
-            raise NotImplementedError(
-                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+            raise _ItemsNotDefined(self.__class__.__name__)
         current_batch = list()
         for element in self.input_dataset:
             current_batch.append(element)
@@ -2848,14 +2936,14 @@ class BatchDataset(Dataset):
         if len(current_batch) > 0 and not self.drop_last:
             yield current_batch
 
-    def __getitem__(self, index):
-        if isinstance(index, numbers.Integral):
-            if index < 0:
+    def __getitem__(self, item):
+        if isinstance(item, numbers.Integral):
+            if item < 0:
                 # only touch len when necessary
-                index = index + len(self)
-                if index < 0:
-                    raise IndexError(index - len(self))
-            input_index = index * self.batch_size
+                item = item + len(self)
+                if item < 0:
+                    raise IndexError(item - len(self))
+            input_index = item * self.batch_size
             current_batch = []
             for i in range(self.batch_size):
                 try:
@@ -2869,7 +2957,7 @@ class BatchDataset(Dataset):
         # elif isinstance(index, str):
         # ToDo: allow merge/collate keys -> allows __getitem__(str)
         else:
-            return super().__getitem__(index)
+            return super().__getitem__(item)
 
     def __len__(self):
         length = len(self.input_dataset) / self.batch_size
@@ -2915,8 +3003,7 @@ class UnbatchDataset(Dataset):
 
     def __iter__(self, with_key=False):
         if with_key:
-            raise NotImplementedError(
-                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+            raise _ItemsNotDefined(self.__class__.__name__)
 
         for batch in self.input_dataset:
             # Don't support `dict` and `str`.
@@ -3099,8 +3186,7 @@ class DynamicBucketDataset(Dataset):
 
     def __iter__(self, with_key=False):
         if with_key:
-            raise NotImplementedError(
-                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+            raise _ItemsNotDefined(self.__class__.__name__)
         buckets = list()
         dropped_count = 0
         total_count = 0
@@ -3501,8 +3587,7 @@ class ProfilingDataset(Dataset):
 
     def __iter__(self, with_key=False):
         if with_key:
-            raise NotImplementedError(
-                f'{self.__class__.__name__}.__iter__(with_key={with_key!r})')
+            raise _ItemsNotDefined(self.__class__.__name__)
         it = iter(self.input_dataset)
         while True:
             start = self.timestamp()
