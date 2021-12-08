@@ -27,7 +27,7 @@ def _get_serialize_and_deserialize(immutable_warranty):
 
 
 def new(
-        examples: Union[list, dict],
+        examples: Union[list, dict, 'Dataset'],
         immutable_warranty: str = 'pickle',
         name: str = None,
 ):
@@ -73,6 +73,9 @@ def new(
         >>> ds = lazy_dataset.new([1, 2, 3, 4, 5])
         >>> list(ds)
         [1, 2, 3, 4, 5]
+        >>> lazy_dataset.new(ds)
+          ListDataset(len=5)
+        MapDataset(_pickle.loads)
 
     """
     if isinstance(examples, dict):
@@ -80,6 +83,9 @@ def new(
             examples, immutable_warranty=immutable_warranty, name=name)
     elif isinstance(examples, (tuple, list)):
         dataset = from_list(
+            examples, immutable_warranty=immutable_warranty, name=name)
+    elif isinstance(examples, Dataset):
+        dataset = from_dataset(
             examples, immutable_warranty=immutable_warranty, name=name)
     else:
         raise TypeError(type(examples), examples)
@@ -97,7 +103,7 @@ def from_dict(
 
 
 def from_list(
-        examples: list,
+        examples: [list, tuple],
         immutable_warranty: str = 'pickle',
         name: str = None,
 ):
@@ -105,6 +111,50 @@ def from_list(
     serialize, deserialize = _get_serialize_and_deserialize(immutable_warranty)
     examples = list(map(serialize, examples))
     return ListDataset(examples, name=name).map(deserialize)
+
+
+def from_dataset(
+        examples: 'Dataset',
+        immutable_warranty: str = 'pickle',
+        name: str = None,
+):
+    """
+    Similar to caching. Iterates over the whole dataset and creates a new
+    dataset from the obtained examples. If the input dataset has `.items()`,
+    the new dataset will be indexable and have `.keys()` and `.items()` (even
+    if the input dataset did not have `.keys()`). If not, the new
+    dataset will not have `.keys()`.
+
+    Example:
+        >>> ds = from_dataset(new([1, 2, 3, 4]))
+        >>> ds
+          ListDataset(len=4)
+        MapDataset(_pickle.loads)
+        >>> list(ds)
+        [1, 2, 3, 4]
+        >>> ds = from_dataset(new({'a': 1, 'b': 2, 'c': 3, 'd': 4}).map(lambda x: x**2))
+        >>> ds
+          DictDataset(len=4)
+        MapDataset(_pickle.loads)
+        >>> dict(ds)
+        {'a': 1, 'b': 4, 'c': 9, 'd': 16}
+
+        Works with filtered datasets:
+        >>> ds = from_dataset(new([1, 2, 3, 4]).filter(lambda x: x%2))
+        >>> list(ds)
+        [1, 3]
+        >>> ds = from_dataset(new({'a': 1, 'b': 2, 'c': 3, 'd': 4}).filter(lambda x: x%2))
+        >>> dict(ds)
+        {'a': 1, 'c': 3}
+    """
+    try:
+        items = list(examples.items())
+    except ItemsNotDefined:
+        return from_list(list(examples),
+                         immutable_warranty=immutable_warranty, name=name)
+    else:
+        return from_dict(dict(items),
+                         immutable_warranty=immutable_warranty, name=name)
 
 
 def concatenate(*datasets):
@@ -666,7 +716,7 @@ class Dataset:
                 )
             idx = [i for i, e in enumerate(self) if filter_fn(e)]
             if len(self) > len(idx):
-                LOG.info(f'Filtered {len(self)-len(idx)} of {len(self)} examples.')
+                LOG.info(f'Filtered {len(self) - len(idx)} of {len(self)} examples.')
             return self[idx]
 
     def catch(self, exceptions=FilterException,
@@ -1415,13 +1465,7 @@ class Dataset:
             assert self.indexable or self.ordered, (
                 'Caching is only supported for indexable or ordered datasets.'
             )
-
-            try:
-                self.keys()
-            except NotImplementedError:
-                return from_list(list(self))
-            else:
-                return from_dict(dict(self))
+            return new(self)
 
     def diskcache(
             self,
@@ -3572,8 +3616,8 @@ class ProfilingDataset(Dataset):
             hits += f' ({self.hit_count[1]} filtered)'
 
         # Better alternative for the name "fetch duration"?
-        r += (f' (fetch duration = {datetime.timedelta(seconds=self.time[0])}, ' 
-             f'{hits})')
+        r += (f' (fetch duration = {datetime.timedelta(seconds=self.time[0])}, '
+              f'{hits})')
         return r
 
     def __len__(self):
