@@ -1373,7 +1373,7 @@ class Dataset:
         i = rng_state.choice(len(self), size=size, replace=replace)
         return self[i]
 
-    def apply(self, apply_fn: callable) -> 'Dataset':
+    def apply(self, apply_fn: callable, lazy=False) -> 'Dataset':
         """
         Allows to apply functions to the complete dataset, not to the
         examples itself. Is equivalent to `dataset = apply_fn(dataset)`, but
@@ -1383,7 +1383,7 @@ class Dataset:
             apply_fn: For now, it is a single function, e.g.,
                 `lambda ds: ds.shard(num_shards, shard_index)`   but can
                 potentially be a list in future implementations.
-
+            lazy:
         Returns:
             The transformed `Dataset`
         """
@@ -1392,7 +1392,10 @@ class Dataset:
         elif isinstance(apply_fn, list):
             raise NotImplementedError
         else:
-            return apply_fn(self)
+            if lazy:
+                return ApplyDataset(apply_fn, self)
+            else:
+                return apply_fn(self)
 
     def cache(
             self,
@@ -1797,6 +1800,109 @@ class _BatchMapWrapper:
 
     def __str__(self):
         return f'{self.__class__.__name__}({self.map_fn})'
+
+
+class ApplyDataset(Dataset):
+    """
+    Dataset that applies a function to the dataset, before iterating over it.
+
+    Motivation: Each iteration should be different, like in reshuffle, but
+                with more control by the user.
+
+    Example, how apply can be used to implement reshuffle:
+
+        >>> ds = new({'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5, 'f': 6})
+        >>> class ReShuffle:
+        ...     def __init__(self, rng):
+        ...         self.rng = rng
+        ...         self.permutation = None
+        ...     def __call__(self, ds):
+        ...         if self.permutation is None:
+        ...             self.permutation = np.arange(len(ds))
+        ...         self.rng.shuffle(self.permutation)
+        ...         return ds[self.permutation]
+        >>> rng = np.random.RandomState(0)
+        >>> ds = ds.apply(ReShuffle(rng), lazy=True)
+        >>> ds  # doctest: +ELLIPSIS
+            DictDataset(len=6)
+          MapDataset(_pickle.loads)
+        ApplyDataset(<...core.ReShuffle object at 0x...>)
+        >>> print(list(ds))
+        [6, 3, 2, 4, 1, 5]
+        >>> print(list(ds))
+        [3, 4, 1, 6, 2, 5]
+        >>> print(list(ds))
+        [6, 5, 4, 1, 2, 3]
+
+        # And now the same example with `ds.shuffle(True, rng)`.
+        >>> ds = new({'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5, 'f': 6})
+        >>> rng = np.random.RandomState(0)
+        >>> ds = ds.shuffle(True, rng)
+        >>> print(list(ds))
+        [6, 3, 2, 4, 1, 5]
+        >>> print(list(ds))
+        [3, 4, 1, 6, 2, 5]
+        >>> print(list(ds))
+        [6, 5, 4, 1, 2, 3]
+    """
+
+    def __init__(self, apply_function, input_dataset):
+        """
+
+        Args:
+            apply_function: function that transforms the input_dataset.
+            input_dataset: any dataset (e.g. DictDataset)
+
+        """
+        assert callable(apply_function), apply_function
+        self.apply_function = apply_function
+        self.input_dataset = input_dataset
+
+    def copy(self, freeze=False):
+        if freeze:
+            return self.apply_function(self.input_dataset).copy(freeze=freeze)
+        else:
+            return self.__class__(
+                self.apply_function,
+                input_dataset=self.input_dataset.copy(freeze=freeze)
+            )
+
+    @property
+    def indexable(self) -> bool:
+        # Unknown, but most likely False, otherwise a non lazy apply would be
+        # used.
+        return False
+
+    @property
+    def ordered(self) -> bool:
+        # Unknown, but most likely False, otherwise a non lazy apply would be
+        # used.
+        return False
+
+    def __str__(self):
+        apply_function_str = str(self.apply_function)
+        if 'built-in function' in apply_function_str:
+            apply_function_str = (
+                f'{self.apply_function.__module__}'
+                f'.{self.apply_function.__qualname__}'
+            )
+        return f'{self.__class__.__name__}({apply_function_str})'
+
+    # apply_function may change __len__
+    # def __len__(self):
+    #      return len(self.input_dataset)
+
+    def __iter__(self, with_key=False):
+        frozen = self.copy(freeze=True)
+        for example in frozen.__iter__(with_key=with_key):
+            yield example
+
+    # apply_function may change keys
+    # def keys(self):
+    #     return self.input_dataset.keys()
+
+    # def __getitem__(self, item):
+    #     return super().__getitem__(item)
 
 
 class CatchExceptionDataset(Dataset):
