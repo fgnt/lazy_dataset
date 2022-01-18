@@ -1377,13 +1377,17 @@ class Dataset:
         """
         Allows to apply functions to the complete dataset, not to the
         examples itself. Is equivalent to `dataset = apply_fn(dataset)`, but
-        calls to `apply` can be easily chained.
+        calls to `apply` can be easily chained. If `lazy` is True, then the
+        `apply_fn` is applied before each iteration over the dataset.
 
         Args:
             apply_fn: For now, it is a single function, e.g.,
                 `lambda ds: ds.shard(num_shards, shard_index)`   but can
                 potentially be a list in future implementations.
-            lazy:
+            lazy: If True, the `apply_fn` is applied before each iteration.
+                This allows to manually implement reshuffle (see
+                doctext from `ApplyDataset`) or more advanced shuffle
+                techniques.
         Returns:
             The transformed `Dataset`
         """
