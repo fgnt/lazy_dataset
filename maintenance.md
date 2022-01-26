@@ -19,6 +19,8 @@ pip install --upgrade bump2version
 `bump2version` takes care to increase the version number, create the commit and tag.
 
 ```bash
+rm -rf build/ dist/ lazy_dataset.egg-info/
+git pull
 bump2version --verbose --tag patch  # major, minor or patch
 python setup.py sdist bdist_wheel
 git push origin --tags
