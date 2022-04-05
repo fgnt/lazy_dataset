@@ -146,8 +146,6 @@ class Database:
 
         Adds the example_id and dataset_name to each example dict.
 
-        This function should never be overwritten.
-
         Args:
             name: list or str specifying the datasets of interest.
             If None an exception msg is raised that shows all available names.
@@ -157,13 +155,19 @@ class Database:
         Returns:
             A lazy dataset.
         """
+        # If you have special database and have to manipulate the examples
+        # (e.g., with a map function), you may overwrite this function and call
+        # super. The private `_get_dataset` may be called multiple times, if
+        # the user requests multiple datasets and should never be overwritten.
         return self._get_dataset(name)
 
     def _get_dataset(self, name=None):
         """
-        The private get_dataset function allows for databases to overwrite
-        get_dataset and adding a map function without recursively calling
-        the map function in case of multiple dataset names.
+        The private _get_dataset function allows for databases to overwrite the
+        public get_dataset and adding a map function without recursively
+        calling the map function in case of multiple dataset names.
+
+        This function should never be overwritten.
         """
         if name is None:
             raise TypeError(
