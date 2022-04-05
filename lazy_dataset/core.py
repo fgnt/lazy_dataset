@@ -1169,7 +1169,9 @@ class Dataset:
         """
         return self.split(num_shards)[shard_index]
 
-    def batch(self, batch_size: int, drop_last: bool = False) -> 'BatchDataset':
+    def batch(
+            self, batch_size: int, drop_last: bool = False, key_join=None
+    ) -> 'Dataset':
         """
         Create batches of size `batch_size` from the elements in this dataset.
         One batch is a list of elements of length `batch_size` (or slightly
