@@ -247,7 +247,7 @@ class JsonDatabase(Database):
         Args:
             json_path: One or multiple paths to database JSONs. Supports both
                 `JsonDatabase('json1.json', 'json2.json')` and
-                `JsonDatabase(['json1.json', 'json2.json')`.
+                `JsonDatabase(['json1.json', 'json2.json'])`.
 
         """
         if isinstance(json_path, (list, tuple)):
