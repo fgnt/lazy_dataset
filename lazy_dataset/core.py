@@ -3071,7 +3071,7 @@ class BatchDataset(Dataset):
 
     @property
     def indexable(self):
-        return self.input_dataset.input_dataset
+        return self.input_dataset.indexable
 
     @property
     def ordered(self) -> bool:
