@@ -12,7 +12,7 @@ import time
 import datetime
 
 import numpy as np
-from typing import Optional, Union, Any, List, Dict, Tuple, Generator
+from typing import Optional, Union, Any, List, Dict
 
 LOG = logging.getLogger('lazy_dataset')
 
@@ -431,7 +431,7 @@ class Dataset:
             return SliceDataset(item, self)
         elif isinstance(item, bytes):
             raise NotImplementedError(
-                f'This is not implemented for an bytes objext. '
+                f'This is not implemented for an bytes object. '
                 f'Use bytes.decode() to convert it to an str.\n'
                 f'__getitem__ is not implemented for {self.__class__}[{item!r}],\n'
                 f'where type({item!r}) == {type(item)} '
@@ -466,7 +466,7 @@ class Dataset:
         return ItemsDataset(self)
 
     def __contains__(self, item):
-        # contains is not well defined for dataset, because dataset is a
+        # contains is not well-defined for dataset, because dataset is a
         # mixture of tuple and dict. (tuple -> value, dict -> key)
         # Use the verbose contains (see exception msg)
         raise Exception(
@@ -974,7 +974,7 @@ class Dataset:
 
     def tile(self, reps: int, shuffle: bool = False) -> 'Dataset':
         """
-        Constructs an new dataset by repeating the dataset the number of
+        Constructs a new dataset by repeating the dataset the number of
         times given by `reps`. This is done by copying the dataset and
         concatenating them.
 
@@ -1523,6 +1523,26 @@ class Dataset:
                 of the program than try to handle signals).
         """
         return DiskCacheDataset(self, cache_dir, reuse, clear)
+
+    def cycle(self) -> 'CycleDataset':
+        """
+        Repeats the dataset endlessly.
+
+        Conceptually similar to `tile(infinity)`. The dataset is not frozen.
+        This means that datasets that contain randomness (e.g., shuffle with
+        `reshuffle=True`) stay random infinitely.
+
+        Examples:
+            >>> ds = new([1, 2, 3]).cycle()
+            >>> list(itertools.islice(ds, 10))
+            [1, 2, 3, 1, 2, 3, 1, 2, 3, 1]
+            >>> ds[100]
+            2
+            >>> ds = new([1, 2, 3]).shuffle(reshuffle=True, rng=np.random.default_rng(0)).cycle()
+            >>> list(itertools.islice(ds, 10))
+            [3, 1, 2, 2, 1, 3, 3, 2, 1, 2]
+        """
+        return CycleDataset(self)
 
 
 class KeyErrorCloseMatches(KeyError):
@@ -3782,6 +3802,40 @@ class ProfilingDataset(Dataset):
         new.time = self.time
         new.hit_count = self.hit_count
         return new
+
+
+class CycleDataset(Dataset):
+    """
+    Cycle a dataset endlessly.
+    """
+    def __init__(self, input_dataset):
+        self.input_dataset = input_dataset
+
+    def __iter__(self, with_key=False):
+        while True:
+            yield from self.input_dataset.__iter__(with_key=with_key)
+
+    @property
+    def indexable(self) -> bool:
+        return self.input_dataset.indexable
+
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
+    def __len__(self):
+        raise TypeError('CycleDataset has an infinite length!')
+
+    def __getitem__(self, item):
+        if isinstance(item, numbers.Integral) \
+                and (self.ordered or len(self.input_dataset) < item):
+            return self.input_dataset[item % len(self.input_dataset)]
+        elif isinstance(item, str):
+            return self.input_dataset[item]
+        return super().__getitem__(item)
+
+    def keys(self) -> list:
+        return self.input_dataset.keys()
 
 
 if __name__ == '__main__':
