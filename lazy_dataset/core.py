@@ -2279,6 +2279,41 @@ class ReShuffleDataset(Dataset):
             return super().__getitem__(item)
 
 
+class CycleDataset(Dataset):
+    """
+    Cycle a dataset endlessly.
+    """
+
+    def __init__(self, input_dataset):
+        self.input_dataset = input_dataset
+
+    def __iter__(self, with_key=False):
+        while True:
+            yield from self.input_dataset.__iter__(with_key=with_key)
+
+    @property
+    def indexable(self) -> bool:
+        return self.input_dataset.indexable
+
+    @property
+    def ordered(self) -> bool:
+        return self.input_dataset.ordered
+
+    def __len__(self):
+        raise TypeError('CycleDataset has an infinite length!')
+
+    def __getitem__(self, item):
+        if isinstance(item, numbers.Integral) \
+                and (self.ordered or len(self.input_dataset) < item):
+            return self.input_dataset[item % len(self.input_dataset)]
+        elif isinstance(item, str):
+            return self.input_dataset[item]
+        return super().__getitem__(item)
+
+    def keys(self) -> list:
+        return self.input_dataset.keys()
+
+
 class LocalShuffleDataset(Dataset):
     """
     Dataset that shuffles the input_dataset locally by randomly sampling from
@@ -3806,40 +3841,6 @@ class ProfilingDataset(Dataset):
         new.time = self.time
         new.hit_count = self.hit_count
         return new
-
-
-class CycleDataset(Dataset):
-    """
-    Cycle a dataset endlessly.
-    """
-    def __init__(self, input_dataset):
-        self.input_dataset = input_dataset
-
-    def __iter__(self, with_key=False):
-        while True:
-            yield from self.input_dataset.__iter__(with_key=with_key)
-
-    @property
-    def indexable(self) -> bool:
-        return self.input_dataset.indexable
-
-    @property
-    def ordered(self) -> bool:
-        return self.input_dataset.ordered
-
-    def __len__(self):
-        raise TypeError('CycleDataset has an infinite length!')
-
-    def __getitem__(self, item):
-        if isinstance(item, numbers.Integral) \
-                and (self.ordered or len(self.input_dataset) < item):
-            return self.input_dataset[item % len(self.input_dataset)]
-        elif isinstance(item, str):
-            return self.input_dataset[item]
-        return super().__getitem__(item)
-
-    def keys(self) -> list:
-        return self.input_dataset.keys()
 
 
 if __name__ == '__main__':
