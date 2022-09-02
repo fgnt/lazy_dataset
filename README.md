@@ -21,6 +21,7 @@ Supported transformations:
  - `dataset.zip(*others)`: Zip two or more datasets
  - `dataset.shuffle(reshuffle=False)`: Shuffles the dataset. When `reshuffle` is `True` it shuffles each time when you iterate over the data.
  - `dataset.tile(reps, shuffle=False)`: Repeats the dataset `reps` times and concatenates it ([numpy.tile](https://docs.scipy.org/doc/numpy/reference/generated/numpy.tile.html))
+ - `dataset.cycle()`: Repeats the dataset endlessly ([itertools.cycle](https://docs.python.org/3/library/itertools.html#itertools.cycle) but without caching)
  - `dataset.groupby(group_fn)`: Groups examples together. In contrast to `itertools.groupby` a sort is not nessesary, like in pandas ([itertools.groupby](https://docs.python.org/3/library/itertools.html#itertools.groupby), [pandas.DataFrame.groupby](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.groupby.html))
  - `dataset.sort(key_fn, sort_fn=sorted)`: Sorts the examples depending on the values `key_fn(example)` ([list.sort](https://docs.python.org/3/library/stdtypes.html#list.sort))
  - `dataset.batch(batch_size, drop_last=False)`: Batches `batch_size` examples together as a list. Usually followed by a map ([tensorflow.data.Dataset.batch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch))
