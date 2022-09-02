@@ -1006,6 +1006,30 @@ class Dataset:
             ]
         return self.__class__.concatenate(*datasets)
 
+    def cycle(self) -> 'CycleDataset':
+        """
+        Repeats the dataset endlessly.
+
+        Conceptually similar to `tile(infinity)`. The dataset is not frozen.
+        This means that datasets that contain randomness (e.g., shuffle with
+        `reshuffle=True`) stay random infinitely.
+
+        Note:
+            `prefetch` doesn't work with a `CycleDataset`. Use `cylce` after
+             `prefetch`.
+
+        Examples:
+            >>> ds = new([1, 2, 3]).cycle()
+            >>> list(itertools.islice(ds, 10))
+            [1, 2, 3, 1, 2, 3, 1, 2, 3, 1]
+            >>> ds[100]
+            2
+            >>> ds = new([1, 2, 3]).shuffle(reshuffle=True, rng=np.random.default_rng(0)).cycle()
+            >>> list(itertools.islice(ds, 10))
+            [3, 1, 2, 2, 1, 3, 3, 2, 1, 2]
+        """
+        return CycleDataset(self)
+
     def groupby(self, group_fn: callable) -> Dict[Any, 'Dataset']:
         """
         Groups elements in the dataset using `group_fn`.
@@ -1523,26 +1547,6 @@ class Dataset:
                 of the program than try to handle signals).
         """
         return DiskCacheDataset(self, cache_dir, reuse, clear)
-
-    def cycle(self) -> 'CycleDataset':
-        """
-        Repeats the dataset endlessly.
-
-        Conceptually similar to `tile(infinity)`. The dataset is not frozen.
-        This means that datasets that contain randomness (e.g., shuffle with
-        `reshuffle=True`) stay random infinitely.
-
-        Examples:
-            >>> ds = new([1, 2, 3]).cycle()
-            >>> list(itertools.islice(ds, 10))
-            [1, 2, 3, 1, 2, 3, 1, 2, 3, 1]
-            >>> ds[100]
-            2
-            >>> ds = new([1, 2, 3]).shuffle(reshuffle=True, rng=np.random.default_rng(0)).cycle()
-            >>> list(itertools.islice(ds, 10))
-            [3, 1, 2, 2, 1, 3, 3, 2, 1, 2]
-        """
-        return CycleDataset(self)
 
 
 class KeyErrorCloseMatches(KeyError):
