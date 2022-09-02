@@ -1015,8 +1015,8 @@ class Dataset:
         `reshuffle=True`) stay random infinitely.
 
         Note:
-            `prefetch` doesn't work with a `CycleDataset`. Use `cylce` after
-             `prefetch`.
+            `dataset.cycle().prefetch(...)` doesn't work. Use `cylce` after
+             `prefetch` (`dataset.prefetch(...).cycle`).
 
         Examples:
             >>> ds = new([1, 2, 3]).cycle()
