@@ -1222,7 +1222,7 @@ class Dataset:
         return BatchDataset(self, batch_size, drop_last)
 
     def batch_dynamic_bucket(
-            self, bucket_cls, expiration=None, max_buffer_size=None, drop_incomplete=False,
+            self, bucket_cls, expiration=None, max_buffered_examples=None, drop_incomplete=False,
             sort_key=None, reverse_sort=False, **bucket_kwargs) -> 'Dataset':
         """dynamically spawn and gather examples into buckets.
         
@@ -1236,8 +1236,8 @@ class Dataset:
             expiration: maximum life time of a bucket. After this number of
                 subsequent examples it is either emitted
                 (if drop_incomplete is False) or discarded
-            max_buffer_size: maximum number of examples to be buffered.
-                If exceeded the oldest bucket is either emitted
+            max_buffered_examples: maximum number of input examples (not buckets)
+                to be buffered. If exceeded the oldest bucket is either emitted
                 (if drop_incomplete is False) or discarded.
             drop_incomplete: if True drop incomplete buckets at the end of
                 iteration or when buckets expire, else emit them.
@@ -1254,7 +1254,7 @@ class Dataset:
             self,
             bucket_cls=bucket_cls,
             expiration=expiration,
-            max_buffer_size=max_buffer_size,
+            max_buffered_examples=max_buffered_examples,
             drop_incomplete=drop_incomplete,
             sort_key=sort_key,
             reverse_sort=reverse_sort,
@@ -1263,7 +1263,7 @@ class Dataset:
 
     def batch_dynamic_time_series_bucket(
             self, batch_size, len_key, max_padding_rate, max_total_size=None,
-            expiration=None, max_buffer_size=None, drop_incomplete=False,
+            expiration=None, max_buffered_examples=None, drop_incomplete=False,
             sort_key=None, reverse_sort=False
     ) -> 'Dataset':
         """
@@ -1285,8 +1285,8 @@ class Dataset:
             expiration: maximum life time of a bucket. After this number of
                 subsequent examples it is either emitted
                 (if drop_incomplete is False) or discarded
-            max_buffer_size: maximum number of examples to be buffered.
-                If exceeded the oldest bucket is either emitted
+            max_buffered_examples: maximum number of input examples (not buckets)
+                to be buffered. If exceeded the oldest bucket is either emitted
                 (if drop_incomplete is False) or discarded.
             drop_incomplete: if True drop incomplete buckets at the end of
                 iteration or when buckets expire, else emit them.
@@ -1304,7 +1304,7 @@ class Dataset:
             bucket_cls=DynamicTimeSeriesBucket, batch_size=batch_size,
             len_key=len_key, max_padding_rate=max_padding_rate,
             max_total_size=max_total_size,
-            expiration=expiration, max_buffer_size=max_buffer_size,
+            expiration=expiration, max_buffered_examples=max_buffered_examples,
             drop_incomplete=drop_incomplete,
             sort_key=sort_key, reverse_sort=reverse_sort
         )
@@ -3353,14 +3353,14 @@ class DynamicBucketDataset(Dataset):
     >>> [batch for batch in batch_dataset]
     [[10, 8], [1], [5, 4], [7], [2]]
     >>> batch_dataset = DynamicBucketDataset(\
-    examples, DynamicTimeSeriesBucket, max_buffer_size=3, batch_size=2, len_key=lambda x: x, max_padding_rate=0.2)
+    examples, DynamicTimeSeriesBucket, max_buffered_examples=3, batch_size=2, len_key=lambda x: x, max_padding_rate=0.2)
     >>> [batch for batch in batch_dataset]
     [[1], [10, 8], [5, 4], [7], [2]]
     """
 
     def __init__(
             self, input_dataset, bucket_cls,
-            expiration=None, max_buffer_size=None, drop_incomplete=False,
+            expiration=None, max_buffered_examples=None, drop_incomplete=False,
             sort_key=None, reverse_sort=False, **bucket_kwargs
     ):
         """dynamically spawn and gather examples into buckets.
@@ -3374,8 +3374,8 @@ class DynamicBucketDataset(Dataset):
             expiration: maximum life time of a bucket. After this number of
                 subsequent examples it is either emitted
                 (if drop_incomplete is False) or discarded
-            max_buffer_size: maximum number of examples to be buffered.
-                If exceeded the oldest bucket is either emitted
+            max_buffered_examples: maximum number of input examples (not buckets)
+                to be buffered. If exceeded the oldest bucket is either emitted
                 (if drop_incomplete is False) or discarded.
             drop_incomplete: if True drop incomplete buckets at the end of
                 iteration or when buckets expire, else emit them.
@@ -3387,7 +3387,7 @@ class DynamicBucketDataset(Dataset):
         """
         self.input_dataset = input_dataset
         self.expiration = expiration
-        self.max_buffer_size = max_buffer_size
+        self.max_buffered_examples = max_buffered_examples
         self.drop_incomplete = drop_incomplete
         self.sort_key = sort_key if (callable(sort_key) or sort_key is None) \
             else (lambda x: x[sort_key])
@@ -3400,7 +3400,7 @@ class DynamicBucketDataset(Dataset):
             input_dataset=self.input_dataset.copy(freeze=freeze),
             bucket_cls=self.bucket_cls,
             expiration=self.expiration,
-            max_buffer_size=self.max_buffer_size,
+            max_buffered_examples=self.max_buffered_examples,
             drop_incomplete=self.drop_incomplete,
             sort_key=self.sort_key,
             reverse_sort=self.reverse_sort,
@@ -3458,8 +3458,8 @@ class DynamicBucketDataset(Dataset):
                         buckets.pop(j)
                         break
 
-            if self.max_buffer_size is not None:
-                while buffered_count > self.max_buffer_size:
+            if self.max_buffered_examples is not None:
+                while buffered_count > self.max_buffered_examples:
                     data = buckets.pop(0)[0].data
                     if not self.drop_incomplete:
                         if self.sort_key is not None:
