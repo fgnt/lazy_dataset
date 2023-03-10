@@ -42,18 +42,18 @@ class Commands:
 
         Returns:
 
-            >>> Commands.preview(json='/net/vol/jenkins/jsons/wsj.json', n=1, d=1)
+            >> Commands.preview(json='/net/vol/jenkins/jsons/wsj.json', n=1, d=1)
             {
                 'datasets': {
                     'cv_dev93': {
                         '4k0c0301': {
-                            'audio_path': {'observation': '/net/fastdb/wsj/13-16.1/wsj1/si_dt_20/4k0/4k0c0301.wav'},
-                            'example_id': '4k0c0301',
+                            'audio_path': {'observation': '/net/fastdb/wsj/....wav'},
+                            'example_id': '...',
                             'gender': 'male',
-                            'kaldi_transcription': 'SAATCHI OFFICIALS SAID THE MANAGEMENT RE:STRUCTURING MIGHT ACCELERATE ITS EFFORTS TO PERSUADE CLIENTS TO USE THE FIRM AS A ONE STOP SHOP FOR BUSINESS SERVICES',
+                            'kaldi_transcription': '...',
                             'num_samples': {'observation': 207299},
-                            'speaker_id': '4k0',
-                            'transcription': 'SAATCHI OFFICIALS SAID THE MANAGEMENT RE:STRUCTURING MIGHT ACCELERATE ITS EFFORTS TO PERSUADE CLIENTS TO USE THE FIRM AS A ONE STOP SHOP FOR BUSINESS SERVICES',
+                            'speaker_id': '...',
+                            'transcription': '...',
                         },
                         ...,  # 503 - 1 examples
                     },
