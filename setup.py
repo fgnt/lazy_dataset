@@ -31,6 +31,7 @@ REQUIRED = [
 EXTRAS = {
     'cache': ['humanfriendly', 'psutil', 'diskcache'],
     'test': ['mock'],
+    'cli': ['IPython', 'paderbox'],
 }
 
 # The rest you shouldn't have to touch too much :)
