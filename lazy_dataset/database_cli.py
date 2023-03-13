@@ -174,11 +174,14 @@ def preview(
                                         with p.group(len(key), key):
                                             p.pretty(value)
                                             p.text(f',')
-                            p.break_()
-                            if color:
-                                p.text(f'...,  {_c.Gray}# skipped {len(dataset)-n} of {len(dataset)} examples{_c.Color_Off}')
-                            else:
-                                p.text(f'...,  # skipped {len(dataset)-n} of {len(dataset)} examples')
+
+                            skipped = len(dataset) - n
+                            if skipped > 0:
+                                p.break_()
+                                if color:
+                                    p.text(f'...,  {_c.Gray}# skipped {skipped} of {len(dataset)} examples{_c.Color_Off}')
+                                else:
+                                    p.text(f'...,  # skipped {skipped} of {len(dataset)} examples')
 
     p.flush()
     sys.stdout.write('\n')
