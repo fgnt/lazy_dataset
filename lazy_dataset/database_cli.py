@@ -123,13 +123,10 @@ def preview(
             if overlength:
                 self.text(',')
                 self.breakable()
-                # self.text(f'...,  # {length} - {length-overlength}')
                 if color:
-                    self.text(
-                        f'...,  {_c.Gray}# skipped {overlength} of {length}{_c.Color_Off}')
+                    self.text(f'...,  {_c.Gray}# skipped {overlength} of {length}{_c.Color_Off}')
                 else:
-                    self.text(
-                        f'...,  # skipped {overlength} of {length}')
+                    self.text(f'...,  # skipped {overlength} of {length}')
                 p.break_()
 
     p = RepresentationPrinter(
@@ -160,7 +157,10 @@ def preview(
                     for i2, (dataset_name, dataset) in enumerate(v.items()):
                         p.break_()
                         if i2 >= d:
-                            p.text(f'{dataset_name!r}: ...,  # {len(dataset)} examples')
+                            if color:
+                                p.text(f'{dataset_name!r}: ...,  {_c.Gray}# {len(dataset)} examples{_c.Color_Off}')
+                            else:
+                                p.text(f'{dataset_name!r}: ...,  # {len(dataset)} examples')
                             continue
                         with group_break(p, indent, f'{dataset_name!r}: {{', '},'):
                             for i3, (example_id, example) in enumerate(dataset.items()):
@@ -230,7 +230,17 @@ def diff(json1, json2, n=1, d=3, max_width=None):
             shell=True)
 
 
-def check_audio_exists(json, n=1):
+def check_audio_exists(json, n=1, color=__name__ == '__main__'):
+    """
+    Checks all files in `audio_path` to exist for the first `n` examples
+    of each dataset.
+
+    Args:
+        json: Database json
+        n:
+        color:
+
+    """
     from pathlib import Path
     from lazy_dataset.database import JsonDatabase
     db = JsonDatabase(json)
@@ -262,8 +272,14 @@ def check_audio_exists(json, n=1):
                 exists = Path(v).exists()
                 if not exists:
                     issue += 1
-                exists = '✘✔'[exists]
-                print(f'    {exists} {k}: {v}')
+                if color:
+                    exists = [
+                        f'{_c.Red}✘',
+                        f'{_c.Green}✔'
+                    ][exists]
+                else:
+                    exists = '✘✔'[exists]
+                print(f'    {exists} {k}: {v}{_c.Color_Off}')
 
                 # assert Path(v).exists(), (k, v, dataset_name)
             # break
