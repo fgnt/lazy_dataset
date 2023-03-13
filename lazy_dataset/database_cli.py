@@ -61,7 +61,7 @@ def preview(
 
     Returns:
 
-        >> Commands.preview(json='/net/vol/jenkins/jsons/wsj.json', n=1, d=1, color=False)
+        >> preview(json='/net/vol/jenkins/jsons/wsj.json', n=1, d=1, color=False)
         {
             'datasets': {
                 'cv_dev93': {
