@@ -8,6 +8,21 @@ import IPython.lib.pretty
 import paderbox as pb
 
 
+
+
+class _c:  # noqa
+    Color_Off = '\033[0m'  # Text Reset
+    Black = '\033[0;30m'  # Black
+    Red = '\033[0;31m'  # Red
+    Green = '\033[0;32m'  # Green
+    Yellow = '\033[0;33m'  # Yellow
+    Blue = '\033[0;34m'  # Blue
+    Purple = '\033[0;35m'  # Purple
+    Cyan = '\033[0;36m'  # Cyan
+    White = '\033[0;37m'  # White
+    Gray = '\033[0;90m'  # White
+
+
 class Commands:
     """
     Commands to inspect a database json.
@@ -21,7 +36,10 @@ class Commands:
     """
 
     @staticmethod
-    def preview(json, n=1, d=3, s=10, max_width=None):
+    def preview(
+            json, n=1, d=10, s=4, max_width=None,
+            color=__name__ == '__main__',
+    ):
         """
         Print a preview of a json, first `n` examples for the first `d` datasets in
         a json are printed.
@@ -37,12 +55,15 @@ class Commands:
                 dataset name will be printed, but the content removed.
             s: (Option max_seq_length from IPython) Control how many entries
                 of a sequence are printed.
+                Note: A value of 0 will print all values, see
+                      `IPython.lib.pretty.pprint`.
             max_width: Tried maximum with of the output, default terminal width
                 or 79.
+            color: Bool, whether to use color codes.
 
         Returns:
 
-            >> Commands.preview(json='/net/vol/jenkins/jsons/wsj.json', n=1, d=1)
+            >> Commands.preview(json='/net/vol/jenkins/jsons/wsj.json', n=1, d=1, color=False)
             {
                 'datasets': {
                     'cv_dev93': {
@@ -55,7 +76,7 @@ class Commands:
                             'speaker_id': '...',
                             'transcription': '...',
                         },
-                        ...,  # 503 - 1 examples
+                        ...,  # skipped 502 of 503 examples
                     },
                     'cv_dev93_5k': ...,  # 513 examples
                     'test_eval92': ...,  # 333 examples
@@ -84,7 +105,12 @@ class Commands:
 
             def _enumerate(self, seq):
                 """like enumerate, but with an upper limit on the number of items"""
-                length = 1
+                # Code copied from super()._enumerate
+                # Differences:
+                #  - Prints a hint for the skipped entries
+                #  - Adds a break, when a sequence is longer than
+                #    max_seq_length.
+                length = 0
                 overlength = 0
                 for idx, x in enumerate(seq):
                     length += 1
@@ -99,7 +125,13 @@ class Commands:
                 if overlength:
                     self.text(',')
                     self.breakable()
-                    self.text(f'...,  # {length} - {length-overlength}')
+                    # self.text(f'...,  # {length} - {length-overlength}')
+                    if color:
+                        self.text(
+                            f'...,  {_c.Gray}# skipped {overlength} of {length}{_c.Color_Off}')
+                    else:
+                        self.text(
+                            f'...,  # skipped {overlength} of {length}')
                     p.break_()
 
         p = RepresentationPrinter(
@@ -140,13 +172,15 @@ class Commands:
                                     with group_break(p, indent, f'{example_id!r}: {{', '},'):
                                         for key, value in example.items():
                                             p.break_()
-                                            # p.text(f'{key}: ')
                                             key = f'{key!r}: '
                                             with p.group(len(key), key):
                                                 p.pretty(value)
                                                 p.text(f',')
                                 p.break_()
-                                p.text(f'...,  # {len(dataset)} - {n} examples')
+                                if color:
+                                    p.text(f'...,  {_c.Gray}# skipped {len(dataset)-n} of {len(dataset)} examples{_c.Color_Off}')
+                                else:
+                                    p.text(f'...,  # skipped {len(dataset)-n} of {len(dataset)} examples')
 
         p.flush()
         sys.stdout.write('\n')
@@ -233,7 +267,7 @@ class Commands:
                     # assert Path(v).exists(), (k, v, dataset_name)
                 # break
         if issue:
-            print(f'ERROR: Found {issue} files that do not exists !!!!!!!!!!!')
+            print(f'ERROR: Found {issue} files that do not exist !!!!!!!!!!!')
 
 
 if __name__ == '__main__':
