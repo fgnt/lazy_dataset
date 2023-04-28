@@ -636,9 +636,10 @@ class Dataset:
 
             # When using only some examples from the dataset,
             # multiple examples will be precalculated.
-            # Here: Up to "called with 3" could be executed, but here
-            #       typically only up to "called with 2" is calculated.
-            >>> next(iter(ds))  # doctest: +ELLIPSIS
+            # Here: Up to "called with 3" could be executed.
+            #       Typically only up to "called with 2" is calculated,
+            #       but this varies between 1 and 3, hence disable test.
+            >>> next(iter(ds))  # doctest: +SKIP
             called with 0
             called with 1
             called with 2
