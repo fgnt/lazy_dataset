@@ -3637,6 +3637,7 @@ class _DiskCacheWrapper:
             if reuse:
                 LOG.info(f'Cache dir "{cache_dir}" already exists. Re-using stored data.')
             else:
+                self.cache = None
                 raise RuntimeError(
                     f'Cache dir "{cache_dir}" already exists! Either remove '
                     f'it or set reuse=True.'
@@ -3663,11 +3664,15 @@ class _DiskCacheWrapper:
         # termination and keyboard interrupt, but no other signals like
         # SIGTERM or SIGKILL. Some signals sometimes work if they are handled
         # within python.
-        self.cache.close()
-        if self.clear:
-            if Path(self.cache.directory).exists():
-                import shutil
-                shutil.rmtree(self.cache.directory)
+
+        # When the __init__ raises a RuntimeError, the instance has no
+        # cache attribute.
+        if self.cache is not None:
+            self.cache.close()
+            if self.clear:
+                if Path(self.cache.directory).exists():
+                    import shutil
+                    shutil.rmtree(self.cache.directory)
 
 
 class DiskCacheDataset(CacheDataset):
