@@ -633,11 +633,15 @@ class Dataset:
             called with 9
             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             >>> ds = ds.prefetch(2, 4)
-            >>> next(iter(ds))
+
+            # When using only some examples from the dataset,
+            # multiple examples will be precalculated.
+            # Here: Up to "called with 3" could be executed, but here
+            #       typically only up to "called with 2" is calculated.
+            >>> next(iter(ds))  # doctest: +ELLIPSIS
             called with 0
             called with 1
             called with 2
-            called with 3
             0
 
             # A second prefetch with multiple workes does not work, but a
