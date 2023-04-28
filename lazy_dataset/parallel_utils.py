@@ -152,11 +152,14 @@ def lazy_parallel_map(
             return job.get()
 
         def terminate(ex, q):
-            try:
-                while True:
-                    q.get(block=False).cancel()
-            except queue.Empty:
-                pass
+            # It looks like multiprocessing works fine with GeneratorExit
+            # and no "hack" is necessary to fix it.
+            pass
+            # try:
+            #     while True:
+            #         q.get(block=False).cancel()
+            # except queue.Empty:
+            #     pass
 
     elif backend == "dill_mp":
         import dill
