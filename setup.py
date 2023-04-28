@@ -30,7 +30,11 @@ REQUIRED = [
 # What packages are optional?
 EXTRAS = {
     'cache': ['humanfriendly', 'psutil', 'diskcache'],
-    'test': ['mock'],
+    'test': [
+        'mock',
+        'dill',  # special backend for prefetch
+        'pathos',  # special backend for prefetch
+    ],
     'cli': ['IPython', 'paderbox'],
 }
 
