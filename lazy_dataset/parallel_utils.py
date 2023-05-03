@@ -152,14 +152,16 @@ def lazy_parallel_map(
             return job.get()
 
         def terminate(ex, q):
-            # It looks like multiprocessing works fine with GeneratorExit
-            # and no "hack" is necessary to fix it.
+            # From https://docs.python.org/3/library/multiprocessing.html
+            #
+            # > multiprocessing.pool.Pool.terminate: Stops the worker processes
+            # > immediately without completing outstanding work. When the pool
+            # > object is garbage collected terminate() will be called
+            # > immediately.
+            #
+            # Multiprocessing works fine with GeneratorExit and no "hack" is
+            # necessary to fix it.
             pass
-            # try:
-            #     while True:
-            #         q.get(block=False).cancel()
-            # except queue.Empty:
-            #     pass
 
     elif backend == "dill_mp":
         import dill
@@ -201,11 +203,27 @@ def lazy_parallel_map(
             return job.result()
 
         def terminate(ex: concurrent.futures.Executor, q):
-            # shutdown doesn't work for threads. Don't know why.
-            # For mp shutdown doesn't work and the processes keep the
-            # program alive, i.e. it never stops properly.
-            # Hence, use cancel for both.
+            # From https://docs.python.org/3/library/concurrent.futures.html
+            #
+            # > Regardless of the value of wait, the entire Python program
+            # > will not exit until all pending futures are done executing.
+            #
+            # This is an undesired behaviour for lazy_dataset, i.e., when
+            # the garbage collector wants to delete the executor, the
+            # executor will finish first all calculations.
+            # Hence, cancel all futures, so it will at least not start new
+            # "tasks".
+            #
+            # For threads shutdown is intended to not terminate submitted
+            # tasks.
+            # For mp shutdown also doesn't work as desired and the processes
+            # keep the program alive, i.e. it never stops properly.
+            # Hence, use only cancel for both.
             # ex.shutdown(wait=False)
+            #
+            # ToDo: Changed in python version 3.9: Added cancel_futures.
+            #  - Use ex.shutdown(`cancel_futures`), once we drop support for
+            #    python 3.8.
 
             try:
                 while True:
