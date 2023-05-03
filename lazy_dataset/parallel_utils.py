@@ -224,6 +224,7 @@ def lazy_parallel_map(
             # ToDo: Changed in python version 3.9: Added cancel_futures.
             #  - Use ex.shutdown(`cancel_futures`), once we drop support for
             #    python 3.8.
+            #  - Once it is used, check that shutdown for mp has no deadlock.
 
             try:
                 while True:
