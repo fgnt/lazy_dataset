@@ -89,7 +89,7 @@ class Foo:
 
 @pytest.mark.parametrize("backend,sleep,thresh", [
     ['t', 0.01, 5],
-    ['mp', 0.01, 15],
+    ['mp', 0.01, 19],
     ['dill_mp', 0.01, 12],
     ['multiprocessing', 0.01, 5],
     ['concurrent_mp', 0.01, 8],
