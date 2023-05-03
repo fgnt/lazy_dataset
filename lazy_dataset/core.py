@@ -3638,7 +3638,6 @@ class _DiskCacheWrapper:
             if reuse:
                 LOG.info(f'Cache dir "{cache_dir}" already exists. Re-using stored data.')
             else:
-                self.cache = None
                 raise RuntimeError(
                     f'Cache dir "{cache_dir}" already exists! Either remove '
                     f'it or set reuse=True.'
@@ -3668,7 +3667,7 @@ class _DiskCacheWrapper:
 
         # When the __init__ raises a RuntimeError, the instance has no
         # cache attribute.
-        if self.cache is not None:
+        if hasattr(self, 'cache'):
             self.cache.close()
             if self.clear:
                 if Path(self.cache.directory).exists():
