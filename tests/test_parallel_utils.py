@@ -117,3 +117,10 @@ def test_break_backend(backend, sleep, thresh):
         data = list(tmpdir.glob('*'))
 
         assert 1 <= len(data) <= thresh, (backend, len(data), data)
+
+
+def test_minimum_buffer_single_thread_prefetch():
+    # Test, that a single thread with a single buffer doesn't end with a
+    # deadlock. (See comment in source code of single_thread_prefetch about
+    # the deadlock)
+    next(iter(lazy_dataset.new([1, 2, 3, 4, 5]).prefetch(1, 1)))
