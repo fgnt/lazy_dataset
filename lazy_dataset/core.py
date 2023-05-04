@@ -633,11 +633,16 @@ class Dataset:
             called with 9
             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             >>> ds = ds.prefetch(2, 4)
-            >>> next(iter(ds))
+
+            # When using only some examples from the dataset,
+            # multiple examples will be precalculated.
+            # Here: Up to "called with 3" could be executed.
+            #       Typically only up to "called with 2" is calculated,
+            #       but this varies between 1 and 3, hence disable test.
+            >>> next(iter(ds))  # doctest: +SKIP
             called with 0
             called with 1
             called with 2
-            called with 3
             0
 
             # A second prefetch with multiple workes does not work, but a
@@ -3659,11 +3664,15 @@ class _DiskCacheWrapper:
         # termination and keyboard interrupt, but no other signals like
         # SIGTERM or SIGKILL. Some signals sometimes work if they are handled
         # within python.
-        self.cache.close()
-        if self.clear:
-            if Path(self.cache.directory).exists():
-                import shutil
-                shutil.rmtree(self.cache.directory)
+
+        # When the __init__ raises a RuntimeError, the instance has no
+        # cache attribute.
+        if hasattr(self, 'cache'):
+            self.cache.close()
+            if self.clear:
+                if Path(self.cache.directory).exists():
+                    import shutil
+                    shutil.rmtree(self.cache.directory)
 
 
 class DiskCacheDataset(CacheDataset):

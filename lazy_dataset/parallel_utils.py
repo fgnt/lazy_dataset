@@ -2,6 +2,7 @@ import queue
 import concurrent.futures
 import os
 import sys
+import contextlib
 import threading
 from typing import Iterable, Optional
 
@@ -123,13 +124,44 @@ def lazy_parallel_map(
     if backend == "mp":
         # http://stackoverflow.com/a/21345423
         from pathos.multiprocessing import ProcessPool as PathosPool
+        import pathos.helpers.pp_helper
         PoolExecutor = PathosPool
 
         def submit(ex, func, *args, **kwargs):
             return ex.apipe(func, *args, **kwargs)
 
+        def result(job: pathos.helpers.pp_helper.ApplyResult):
+            return job.get()
+
+        def terminate(ex: pathos.multiprocessing.ProcessPool, q):
+            ex.terminate()
+            # Cancel doesn't work for pathos. Don't know why.
+            # try:
+            #     while True:
+            #         q.get(block=False).cancel()
+            # except queue.Empty:
+            #     pass
+
+    elif backend == 'multiprocessing':
+        from multiprocessing import Pool as PoolExecutor
+
+        def submit(ex, func, *args, **kwargs):
+            return ex.apply_async(func, args, kwargs)
+
         def result(job):
             return job.get()
+
+        def terminate(ex, q):
+            # From https://docs.python.org/3/library/multiprocessing.html
+            #
+            # > multiprocessing.pool.Pool.terminate: Stops the worker processes
+            # > immediately without completing outstanding work. When the pool
+            # > object is garbage collected terminate() will be called
+            # > immediately.
+            #
+            # Multiprocessing works fine with GeneratorExit and no "hack" is
+            # necessary to fix it.
+            pass
 
     elif backend == "dill_mp":
         import dill
@@ -144,10 +176,17 @@ def lazy_parallel_map(
         def result(job):
             return job.result()
 
+        def terminate(ex: concurrent.futures.Executor, q):
+            try:
+                while True:
+                    q.get(block=False).cancel()
+            except queue.Empty:
+                pass
+
     elif backend in [
             "t",
             "thread",
-            "concurrent_mp"
+            "concurrent_mp",
     ]:
         if backend in ['t', 'thread']:
             PoolExecutor = concurrent.futures.ThreadPoolExecutor
@@ -160,31 +199,74 @@ def lazy_parallel_map(
         def submit(ex, func, *args, **kwargs):
             return ex.submit(func, *args, **kwargs)
 
-        def result(job):
+        def result(job: concurrent.futures.Future):
             return job.result()
-    # elif backend is False:
-    #
-    #     @contextmanager
-    #     def PoolExecutor(max_workers):
-    #         yield None
-    #
-    #     def submit(ex, func, *args, **kwargs):
-    #         return func(*args, **kwargs)
-    #
-    #     def result(job):
-    #         return job
+
+        def terminate(ex: concurrent.futures.Executor, q):
+            # From https://docs.python.org/3/library/concurrent.futures.html
+            #
+            # > Regardless of the value of wait, the entire Python program
+            # > will not exit until all pending futures are done executing.
+            #
+            # This is an undesired behaviour for lazy_dataset, i.e., when
+            # the garbage collector wants to delete the executor, the
+            # executor will finish first all calculations.
+            # Hence, cancel all futures, so it will at least not start new
+            # "tasks".
+            #
+            # For threads shutdown is intended to not terminate submitted
+            # tasks.
+            # For mp shutdown also doesn't work as desired and the processes
+            # keep the program alive, i.e. it never stops properly.
+            # Hence, use only cancel for both.
+            # ex.shutdown(wait=False)
+            #
+            # ToDo: Changed in python version 3.9: Added cancel_futures.
+            #  - Use ex.shutdown(`cancel_futures`), once we drop support for
+            #    python 3.8.
+            #  - Once it is used, check that shutdown for mp has no deadlock.
+
+            try:
+                while True:
+                    q.get(block=False).cancel()
+            except queue.Empty:
+                pass
+
+    elif backend is False:
+
+        @contextlib.contextmanager
+        def PoolExecutor(max_workers):
+            yield None
+
+        def submit(ex, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        def result(job):
+            return job
+
+        def terminate(ex, q):
+            pass
+
     else:
         raise ValueError(backend)
 
     with PoolExecutor(max_workers) as executor:
-        # First fill the buffer
-        # If buffer full, take one element and push one new inside
-        for ele in generator:
-            if q.qsize() >= buffer_size:
+        try:
+            # First fill the buffer
+            # If buffer full, take one element and push one new inside
+            for ele in generator:
+                if q.qsize() >= buffer_size:
+                    yield result(q.get())
+                q.put(submit(executor, function, ele, *args, **kwargs))
+            while not q.empty():
                 yield result(q.get())
-            q.put(submit(executor, function, ele, *args, **kwargs))
-        while not q.empty():
-            yield result(q.get())
+        except GeneratorExit:
+            # A GeneratorExit will not stop the PoolExecutor,
+            # i.e. the PoolExecutor will finish all calculations,
+            # before the PoolExecutor stops. This could take some time
+            # and is useless.
+            terminate(executor, q)
+            raise
 
 
 def single_thread_prefetch(

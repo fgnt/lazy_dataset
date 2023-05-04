@@ -30,8 +30,22 @@ REQUIRED = [
 # What packages are optional?
 EXTRAS = {
     'cache': ['humanfriendly', 'psutil', 'diskcache'],
-    'test': ['mock'],
-    'cli': ['IPython', 'paderbox'],
+    'test': [
+        'mock',
+        'dill',  # special backend for prefetch
+        'pathos',  # special backend for prefetch
+    ],
+    'cli': [
+        # When using Python 2.7, please install IPython 5.x LTS Long Term Support version.
+        # Python 3.3 and 3.4 were supported up to IPython 6.x.
+        # Python 3.5 was supported with IPython 7.0 to 7.9.
+        # Python 3.6 was supported with IPython up to 7.16.
+        # Python 3.7 was still supported with the 7.x branch.
+        "IPython<8.0; python_version=='3.7'",  # IPython 8.0-8.12 supports Python 3.8 and above, following NEP 29.
+        "IPython<8.13.0; python_version=='3.8'",  # IPython 8.13+ supports Python 3.9 and above, following NEP 29.
+        "IPython; python_version>='3.9'",
+        'paderbox',
+    ],
 }
 
 # The rest you shouldn't have to touch too much :)
