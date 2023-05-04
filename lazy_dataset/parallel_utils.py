@@ -354,7 +354,20 @@ def single_thread_prefetch(
             # https://stackoverflow.com/a/1854263/5766934
             exc_info = sys.exc_info()
         finally:
-            data_queue.put(unique_object)
+            if not shutdown:
+                # This is not necessary, when the main thread triggers the
+                # shutdown. Further, when buffer_size is 1, this can be
+                # deadlock:
+                #  - Queue is full and worker waits to insert an element.
+                #  - Main thread sets the shutdown flag
+                #  - Main thread empties the queue (Several get_nowait calls).
+                #     - Note: get_nowait is fast and don't use a lock
+                #  - Main thread gets an Empty exception, before the worker
+                #    puts a new element in the queue.
+                #  - Worker puts the element in the queue.
+                #  - Worker wants to puts unique_object in the queue,
+                #    but queue is full -> deadlock.
+                data_queue.put(unique_object)
 
     thread = threading.Thread(target=worker, args=())
     thread.start()
@@ -373,12 +386,13 @@ def single_thread_prefetch(
             # trigger the thread to run in the shutdown, otherwise the thread
             # may hang in `data_queue.put(item)`
             # Not sure, if there is a critical timing, when multiple get calls
-            # are necessary. Hence call it until it is empty.
+            # are necessary. Hence, call it until it is empty.
             while True:
                 data_queue.get_nowait()
         except queue.Empty:
             pass
         thread.join()
+
     if exc_info is not None:
         raise exc_info[1].with_traceback(exc_info[2])
 
