@@ -1,9 +1,12 @@
+# This is an integration test for the immutability functionality
 from __future__ import annotations
 import json
 import os
 import pickle
 import sys
 import time
+import paderbox
+from paderbox.io.cache import url_to_local_path
 from collections import defaultdict
 from typing import Any
 import lazy_dataset
@@ -16,7 +19,8 @@ from tabulate import tabulate
 
 # Download from https://huggingface.co/datasets/merve/coco/resolve/main/annotations/instances_train2017.json
 def create_coco() -> list[Any]:
-    with open("instances_train2017.json") as f:
+    json_path = url_to_local_path("https://huggingface.co/datasets/merve/coco/resolve/main/annotations/instances_train2017.json")
+    with open(json_path) as f:
         obj = json.load(f)
         return obj["annotations"]
 
@@ -114,7 +118,7 @@ def worker(_, dataset: torch.utils.data.Dataset):
 
 if __name__ == "__main__":
     monitor = MemoryMonitor()
-    immutable_warranty = "wu"  # copy  pickle  wu
+    immutable_warranty = "pickle"  # copy  pickle  wu
     ds = lazy_dataset.new(create_coco(), immutable_warranty=immutable_warranty)
     print(monitor.table())
 
@@ -140,7 +144,7 @@ if __name__ == "__main__":
         axis.set_xlabel("Times (s)")
         axis.legend()
         axis.set_ylabel("Memory usage (MB)")
-        plt.savefig(f"/net/vol/deegen/SHK/Lazy_dataset_test/{immutable_warranty}.png", dpi=600)
+        # plt.savefig(f"/net/vol/deegen/SHK/Lazy_dataset_test/{immutable_warranty}.svg", format="svg")#, dpi=600)
         plt.show()
     finally:
         ctx.join()

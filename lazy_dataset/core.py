@@ -29,6 +29,8 @@ def _get_serialize_and_deserialize(immutable_warranty):
 class NumpySerializedList(collections.UserList):
     """
     Stores the list dataset in two numpy arrays and behaves similar to a list
+    originally from: https://ppwwyyxx.com/blog/2022/Demystify-RAM-Usage-in-Multiprocess-DataLoader/
+    Github Repository: https://github.com/ppwwyyxx/RAM-multiprocess-dataloader
     """
     def __init__(self, lst: list):
         def _serialize(data):
@@ -1689,7 +1691,7 @@ class ListDataset(Dataset):
     """
 
     def __init__(self, examples, name=None):
-        assert isinstance(examples, (tuple, list, NumpySerializedList)), (type(examples), examples)
+        assert isinstance(examples, (tuple, list, collections.UserList)), (type(examples), examples)
         self.examples = examples
         self.name = name
 
