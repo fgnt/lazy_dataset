@@ -9,19 +9,12 @@ This was originally observed in  https://ppwwyyxx.com/blog/2022/Demystify-RAM-Us
 For datasets created from a list you can also choose a third option 'wu' which uses numpy arrays instead of many python objects to store the dataset in the memory. By doing so the "copy-on-read" effect does not trigger and the child process can access the datset from the main process without copying the data.
 Therefore by using the 'wu' option you can prevent each process to have its own copy of the dataset stored in the RAM and instead share the dataset from the main process. Because of that the dataset does not need to be loaded into the RAM multiple times and the RAM memory usage can be reduced as shown in the diagrams below.
 
-![Copy](pickle.svg)
-<img src="copy.svg" alt= “Memory Usage with copy” width="800" height="400"> 
-<center> 
-Immutable_warranty=copy<center> 
-
-<img src="pickle.svg" alt= “Memory Usage with pickle" width="40%" height="40%">
-<center> 
-Immutable_warranty=pickle <center> 
-
-<img src="wu.svg" alt= “Memory Usage with wu" width="40%" height="40%">
-<center> 
-Immutable_warranty=wu 
-</center>
+![Memory Usage with copy](copy.svg)
+<center>Immutable_warranty=copy<center> 
+![Memory Usage with pickle](pickle.svg)
+<center>Immutable_warranty=pickle <center> 
+![Memory Usage with wu](wu.svg)
+<center>Immutable_warranty=wu</center>
 
 Where the displayed USS (Unique Set Size) is the sum of all single USSs of each worker. The USS of one worker is the amount of RAM that is unique to that process and not shared with other processes.
 
