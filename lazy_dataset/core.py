@@ -26,6 +26,29 @@ def _get_serialize_and_deserialize(immutable_warranty):
         raise ValueError(immutable_warranty)
 
 
+class NumpySerializedList(collections.UserList):
+    """
+    Stores the list dataset in two numpy arrays and behaves similar to a list
+    """
+    def __init__(self, lst: list):
+        def _serialize(data):
+            buffer = pickle.dumps(data, protocol=-1)
+            return np.frombuffer(buffer, dtype=np.uint8)
+        self._lst = [_serialize(x) for x in lst]
+        self._addr = np.asarray([len(x) for x in self._lst], dtype=np.int64)
+        self._addr = np.cumsum(self._addr)
+        self._lst = np.concatenate(self._lst)
+
+    def __len__(self):
+        return len(self._addr)
+
+    def __getitem__(self, idx):
+        start_addr = 0 if idx == 0 else self._addr[idx - 1].item()
+        end_addr = self._addr[idx].item()
+        bytes = memoryview(self._lst[start_addr:end_addr])
+        return pickle.loads(bytes)
+
+
 def new(
         examples: Union[list, dict, 'Dataset'],
         immutable_warranty: str = 'pickle',
@@ -108,6 +131,8 @@ def from_list(
         name: str = None,
 ):
     assert isinstance(examples, (tuple, list)), examples
+    if immutable_warranty == "wu":
+        return ListDataset(NumpySerializedList(examples), name=name)
     serialize, deserialize = _get_serialize_and_deserialize(immutable_warranty)
     examples = list(map(serialize, examples))
     return ListDataset(examples, name=name).map(deserialize)
@@ -1664,7 +1689,7 @@ class ListDataset(Dataset):
     """
 
     def __init__(self, examples, name=None):
-        assert isinstance(examples, (tuple, list)), (type(examples), examples)
+        assert isinstance(examples, (tuple, list, NumpySerializedList)), (type(examples), examples)
         self.examples = examples
         self.name = name
 
