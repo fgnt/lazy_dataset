@@ -1,6 +1,5 @@
 # lazy_dataset
 
-[![Build Status](https://travis-ci.org/fgnt/lazy_dataset.svg?branch=master)](https://travis-ci.org/fgnt/lazy_dataset)
 ![Run python tests](https://github.com/fgnt/lazy_dataset/workflows/Run%20python%20tests/badge.svg?branch=master)
 [![codecov.io](https://codecov.io/github/fgnt/lazy_dataset/coverage.svg?branch=master)](https://codecov.io/github/fgnt/lazy_dataset?branch=master)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/fgnt/lazy_dataset/blob/master/LICENSE)
