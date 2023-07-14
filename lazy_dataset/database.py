@@ -268,6 +268,21 @@ class JsonDatabase(Database):
 
     _data = None
 
+    def __reduce__(self):
+        """
+        >>> import pickle
+        >>> import tempfile
+        >>> with tempfile.TemporaryDirectory() as f:
+        ...     path = Path(f) / 'json1.json'
+        ...     path.write_text('{"datasets": {"d1": {"ex1": 1}}}')
+        ...     new = pickle.loads(pickle.dumps(JsonDatabase(path)))
+        ...     print(new._data)
+        32
+        {'datasets': {'d1': {'ex1': 1}}}
+        """
+        _ = self.data  # Trigger load of data
+        return JsonDatabase, (self._json_path,), {'_data': self._data}
+
     @property
     def data(self):
         if self._data is None:
