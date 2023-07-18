@@ -298,13 +298,21 @@ class JsonDatabase(Database):
 
 
 def _merge_database_dicts(*database_dicts):
-    # Copy to prevent writes to the original dict
-    result = copy.deepcopy(database_dicts[0])
+    if len(database_dicts) == 1:
+        return database_dicts[0]
+
+    # Copy to prevent writes to the original dict.
+    # A weak copy is sufficient since we only modify two top levels.
+    result = {
+        k1: v1.copy()
+        for k1, v1 in database_dicts[0].items()
+    }
 
     for database_dict in database_dicts[1:]:
         assert not set(database_dict.keys()) - {'datasets', 'alias'}, (
-            f'All but the first database are only allowed to have keys'
-            f'"datasets" and "alias".'
+            f'All but the first database are only allowed to have keys '
+            f'"datasets" and "alias".\n'
+            f'Found: {database_dict.keys()}'
         )
 
         # Get dataset names to check for duplicates
