@@ -10,7 +10,6 @@ from paderbox.io.cache import url_to_local_path
 from collections import defaultdict
 from typing import Any
 import lazy_dataset
-import matplotlib.pyplot as plt
 import numpy as np
 import psutil
 import torch
@@ -117,6 +116,7 @@ def worker(_, dataset: torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
     monitor = MemoryMonitor()
     immutable_warranty = "pickle"  # copy  pickle  wu
     ds = lazy_dataset.new(create_coco(), immutable_warranty=immutable_warranty)
