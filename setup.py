@@ -31,6 +31,7 @@ REQUIRED = [
 EXTRAS = {
     'cache': ['humanfriendly', 'psutil', 'diskcache'],
     'test': [
+        'paderbox',
         'mock',
         'dill',  # special backend for prefetch
         'pathos',  # special backend for prefetch
