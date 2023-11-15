@@ -82,6 +82,10 @@ class Database:
             f'Override this property in {self.__class__.__name__}!')
 
     @property
+    def alias(self):
+        return self.data.setdefault('alias', {})
+
+    @property
     def dataset_names(self):
         """
         A tuple of all available dataset names, i.e. the keys of
@@ -90,7 +94,7 @@ class Database:
         return tuple(
             self.data['datasets'].keys()
         ) + tuple(
-            self.data.get('alias', {}).keys()
+            self.alias.keys()
         )
 
     def get_examples(self, dataset_name):
@@ -107,8 +111,8 @@ class Database:
 
         """
         try:
-            if dataset_name in self.data.get('alias', []):
-                dataset_names = self.data['alias'][dataset_name]
+            if dataset_name in self.alias:
+                dataset_names = self.alias[dataset_name]
                 examples = {}
                 for name in dataset_names:
                     examples_new = self.data['datasets'][name]
