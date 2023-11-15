@@ -286,8 +286,18 @@ class JsonDatabase(Database):
     @property
     def data(self):
         if self._data is None:
+            def read_text(path):
+                try:
+                    path = Path(path)
+                except TypeError:
+                    if isinstance(path, dict):
+                        raise TypeError(f'{self.__class__.__qualname__} got a {type(path)} as json_path. Did you mean to use DictDatabase?')
+                    else:
+                        raise
+                return path.expanduser().read_text()
+
             self._data = _merge_database_dicts(*[
-                json.loads(Path(path).expanduser().read_text())
+                json.loads(read_text(path))
                 for path in self._json_path
             ])
 
