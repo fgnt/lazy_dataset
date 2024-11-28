@@ -112,6 +112,9 @@ def new(
     elif isinstance(examples, Dataset):
         dataset = from_dataset(
             examples, immutable_warranty=immutable_warranty, name=name)
+    elif isinstance(examples, (str, Path)):
+        dataset = from_file(
+            examples, immutable_warranty=immutable_warranty, name=name)
     else:
         raise TypeError(type(examples), examples)
     return dataset
@@ -138,6 +141,31 @@ def from_list(
     serialize, deserialize = _get_serialize_and_deserialize(immutable_warranty)
     examples = list(map(serialize, examples))
     return ListDataset(examples, name=name).map(deserialize)
+
+
+def from_file(
+        examples: [str, Path],
+        immutable_warranty: str = 'pickle',
+        name: str = None,
+):
+    assert isinstance(examples, (str, Path)), examples
+    examples = Path(examples)
+    if examples.suffix == '.json':
+        import json
+        with open(examples) as fd:
+            examples = json.load(fd)
+    elif examples.suffix == '.yaml':
+        import yaml
+        with open(examples) as fd:
+            examples = yaml.load(fd)
+    else:
+        raise NotImplementedError(examples.suffix, examples)
+
+    assert isinstance(examples, (tuple, list, dict)), (type(examples), examples)
+
+    if immutable_warranty is None:
+        return ListDataset(examples, name=name)
+    return new(examples, immutable_warranty=immutable_warranty, name=name)
 
 
 def from_dataset(
