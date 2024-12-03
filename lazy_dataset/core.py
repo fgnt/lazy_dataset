@@ -2703,6 +2703,12 @@ class ConcatenateDataset(Dataset):
         return all(ds.ordered for ds in self.input_datasets)
 
     def __iter__(self, with_key=False):
+        if with_key:
+            try:
+                self.keys()
+            except AssertionError:
+                raise _ItemsNotDefined(self.__class__.__name__) from None
+
         for input_dataset in self.input_datasets:
             if with_key:
                 iterable = input_dataset.__iter__(with_key=True)
