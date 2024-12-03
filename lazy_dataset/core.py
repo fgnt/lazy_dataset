@@ -223,9 +223,13 @@ def from_dataset(
                          immutable_warranty=immutable_warranty, name=name)
     else:
         new = dict(items)
-        assert len(new) == len(items), f'{len(new)} != {len(items)}\nYou found a bug!\n{examples!r}'
-        return from_dict(new,
-                         immutable_warranty=immutable_warranty, name=name)
+        if len(new) == len(items):
+            return from_dict(new,
+                            immutable_warranty=immutable_warranty, name=name)
+        else:
+            # Duplicates in keys
+            return from_list(list(map(operator.itemgetter(1), items)),
+                             immutable_warranty=immutable_warranty, name=name)
 
 
 def concatenate(*datasets):
@@ -2705,12 +2709,6 @@ class ConcatenateDataset(Dataset):
         return all(ds.ordered for ds in self.input_datasets)
 
     def __iter__(self, with_key=False):
-        if with_key:
-            try:
-                self.keys()
-            except AssertionError as e:
-                raise _ItemsNotDefined(self.__class__.__name__) from e
-
         for input_dataset in self.input_datasets:
             if with_key:
                 iterable = input_dataset.__iter__(with_key=True)
@@ -3093,8 +3091,8 @@ class ItemsDataset(Dataset):
     >>> ds_nokeys_rng = ds_plain.shuffle(True, rng=np.random.RandomState(0))  # No keys
     >>> list(ds_nokeys.map(lambda x: x + 10).items())
     [('a', 11), ('b', 12), ('c', 13)]
-    >>> list(ds_nokeys.concatenate(ds_plain).items())
-    [('a', 1), ('b', 2), ('c', 3), ('a', 1), ('b', 2), ('c', 3)]
+    >>> list(ds_nokeys.map(lambda x: x + 10).concatenate(ds_plain).filter(lambda x: x in [1, 12, 13]).items())
+    [('b', 12), ('c', 13), ('a', 1)]
     >>> list(ds_nokeys_rng.intersperse(ds_nokeys_rng).items())
     [('c', 3), ('a', 1), ('c', 3), ('c', 3), ('b', 2), ('b', 2)]
     >>> list(ds_plain.key_zip(ds_plain).items())
