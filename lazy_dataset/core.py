@@ -214,7 +214,6 @@ def from_dataset(
         >>> from_dataset(ds)
           ListDataset(len=4)
         MapDataset(_pickle.loads)
-        >>> list(ds.items())
 
     """
     try:
@@ -434,7 +433,10 @@ class Dataset:
         Returns:
             A copy of this dataset
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            f'copy is not implemented for {self.__class__}.\n'
+            f'self: \n{repr(self)}'
+        )
 
     def __iter__(self, with_key=False):
         if with_key:
@@ -2706,8 +2708,8 @@ class ConcatenateDataset(Dataset):
         if with_key:
             try:
                 self.keys()
-            except AssertionError:
-                raise _ItemsNotDefined(self.__class__.__name__) from None
+            except AssertionError as e:
+                raise _ItemsNotDefined(self.__class__.__name__) from e
 
         for input_dataset in self.input_datasets:
             if with_key:
@@ -2996,6 +2998,7 @@ class KeyZipDataset(Dataset):
             ]
             raise AssertionError(
                 f'Expect that all input_datasets have the same keys. '
+                f'Missing: {lengths} of {len(keys)}\n'
                 f'Missing keys: '
                 f'{missing_keys}\n{self.input_datasets}'
             )
