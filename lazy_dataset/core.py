@@ -201,6 +201,21 @@ def from_dataset(
         >>> ds = from_dataset(new({'a': 1, 'b': 2, 'c': 3, 'd': 4}).filter(lambda x: x%2))
         >>> dict(ds)
         {'a': 1, 'c': 3}
+
+        # Works with concatenated datasets and duplicated keys
+        >>> ds = new({'a': 1, 'b': 2})
+        >>> ds = concatenate(ds, ds)
+        >>> ds
+            DictDataset(len=2)
+          MapDataset(_pickle.loads)
+            DictDataset(len=2)
+          MapDataset(_pickle.loads)
+        ConcatenateDataset()
+        >>> from_dataset(ds)
+          ListDataset(len=4)
+        MapDataset(_pickle.loads)
+        >>> list(ds.items())
+
     """
     try:
         items = list(examples.items())
@@ -208,7 +223,9 @@ def from_dataset(
         return from_list(list(examples),
                          immutable_warranty=immutable_warranty, name=name)
     else:
-        return from_dict(dict(items),
+        new = dict(items)
+        assert len(new) == len(items), f'{len(new)} != {len(items)}\nYou found a bug!\n{examples!r}'
+        return from_dict(new,
                          immutable_warranty=immutable_warranty, name=name)
 
 
