@@ -3403,7 +3403,13 @@ class DynamicTimeSeriesBucket(DynamicBucket):
 
     def assess(self, example):
         seq_len = self.len_key(example)
-        return self.lower_bound <= seq_len <= self.upper_bound
+        return (
+            (self.lower_bound <= seq_len <= self.upper_bound)
+            and (
+                (self.max_total_size is None)
+                or ((len(self.data) + 1) * max(self.max_len, seq_len) <= self.max_total_size)
+            )
+        )
 
     def _append(self, example):
         super()._append(example)
