@@ -184,6 +184,53 @@ def from_dataset(
                          immutable_warranty=immutable_warranty, name=name)
 
 
+def from_path(
+    root: Union[str, Path],
+    suffix: Union[str, List[str]],
+    immutable_warranty: str = 'pickle',
+    name: str = None,
+    parents: Optional[int] = None,
+    sep: str = "_",
+):
+    from collections import defaultdict
+    import os
+    # https://stackoverflow.com/a/59803793/16085876
+    def _run_fast_scandir(root: Path, ext: List[str]):
+        subfolders, files = [], []
+
+        for f in os.scandir(root):
+            if f.is_dir():
+                subfolders.append(f.path)
+            if f.is_file():
+                # if os.path.splitext(f.name)[1].lower() in ext:
+                if any(e in f.name.lower() for e in ext):
+                    files.append(Path(f.path))
+
+        for folder in list(subfolders):
+            sf, f = _run_fast_scandir(folder, ext)
+            subfolders.extend(sf)
+            files.extend(f)
+        return subfolders, files
+
+    def _make_example_id(file_path: Path):
+        if parents is None:
+            return file_path.stem
+        example_id = file_path.stem
+        prefix = sep.join(file_path.parts[-(2+parents):-1])
+        return sep.join((prefix, example_id))
+
+    if isinstance(suffix, str):
+        suffix = [suffix]
+    _, files = _run_fast_scandir(Path(root), suffix)
+    files = map(Path, files)
+    examples = defaultdict(dict)
+    for file in files:
+        example_id = _make_example_id(file)
+        examples[example_id][file.suffix.lstrip(".")] = file
+    # examples = {_make_example_id(file): {"file_path": file} for file in files}
+    return from_dict(examples, immutable_warranty, name)
+
+
 def concatenate(*datasets):
     """
     Create a new `Dataset` by concatenation of all passed datasets.
