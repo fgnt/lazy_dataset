@@ -243,7 +243,8 @@ def from_path(
     """Create a new DictDataset from a directory path.
 
     Scan and include all files in `root` that end with a suffix in `suffix`.
-    New examples are created for each unique file stem. The example_id is derived from the file path.
+    New examples are created for each unique file stem. The example_id is
+    derived from the file path.
 
     >>> import tempfile
     >>> temp_dir = tempfile.TemporaryDirectory()
@@ -256,17 +257,14 @@ def from_path(
       DictDataset(len=1)
     MapDataset(_pickle.loads)
     >>> ds[0]  # doctest: +ELLIPSIS
-    {'example_id': 'test1',
-     'txt': PosixPath('.../test1.txt')}
+    {'example_id': 'test1', 'txt': PosixPath('.../test1.txt')}
 
     >>> ds = from_path(temp_dir.name, suffix=[".txt", ".wav"])
     >>> ds
       DictDataset(len=1)
     MapDataset(_pickle.loads)
     >>> ds[0]  # doctest: +ELLIPSIS
-    {'example_id': 'test1',
-     'txt': PosixPath('.../test1.txt'),
-     'wav': PosixPath('.../test1.wav')}
+    {'example_id': 'test1', 'txt': PosixPath('.../test1.txt'), 'wav': PosixPath('.../test1.wav')}
 
     Args:
         root (Union[str, Path]): Root directory to scan for files.
