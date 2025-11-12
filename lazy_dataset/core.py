@@ -112,6 +112,9 @@ def new(
     elif isinstance(examples, Dataset):
         dataset = from_dataset(
             examples, immutable_warranty=immutable_warranty, name=name)
+    elif isinstance(examples, (str, Path)):
+        dataset = from_file(
+            examples, immutable_warranty=immutable_warranty, name=name)
     else:
         raise TypeError(type(examples), examples)
     return dataset
@@ -138,6 +141,31 @@ def from_list(
     serialize, deserialize = _get_serialize_and_deserialize(immutable_warranty)
     examples = list(map(serialize, examples))
     return ListDataset(examples, name=name).map(deserialize)
+
+
+def from_file(
+        examples: [str, Path],
+        immutable_warranty: str = 'pickle',
+        name: str = None,
+):
+    assert isinstance(examples, (str, Path)), examples
+    examples = Path(examples)
+    if examples.suffix == '.json':
+        import json
+        with open(examples) as fd:
+            examples = json.load(fd)
+    elif examples.suffix == '.yaml':
+        import yaml
+        with open(examples) as fd:
+            examples = yaml.load(fd)
+    else:
+        raise NotImplementedError(examples.suffix, examples)
+
+    assert isinstance(examples, (tuple, list, dict)), (type(examples), examples)
+
+    if immutable_warranty is None:
+        return ListDataset(examples, name=name)
+    return new(examples, immutable_warranty=immutable_warranty, name=name)
 
 
 def from_dataset(
@@ -173,6 +201,20 @@ def from_dataset(
         >>> ds = from_dataset(new({'a': 1, 'b': 2, 'c': 3, 'd': 4}).filter(lambda x: x%2))
         >>> dict(ds)
         {'a': 1, 'c': 3}
+
+        # Works with concatenated datasets and duplicated keys
+        >>> ds = new({'a': 1, 'b': 2})
+        >>> ds = concatenate(ds, ds)
+        >>> ds
+            DictDataset(len=2)
+          MapDataset(_pickle.loads)
+            DictDataset(len=2)
+          MapDataset(_pickle.loads)
+        ConcatenateDataset()
+        >>> from_dataset(ds)
+          ListDataset(len=4)
+        MapDataset(_pickle.loads)
+
     """
     try:
         items = list(examples.items())
@@ -180,8 +222,14 @@ def from_dataset(
         return from_list(list(examples),
                          immutable_warranty=immutable_warranty, name=name)
     else:
-        return from_dict(dict(items),
-                         immutable_warranty=immutable_warranty, name=name)
+        new = dict(items)
+        if len(new) == len(items):
+            return from_dict(new,
+                            immutable_warranty=immutable_warranty, name=name)
+        else:
+            # Duplicates in keys
+            return from_list(list(map(operator.itemgetter(1), items)),
+                             immutable_warranty=immutable_warranty, name=name)
 
 
 def from_path(
@@ -436,7 +484,10 @@ class Dataset:
         Returns:
             A copy of this dataset
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            f'copy is not implemented for {self.__class__}.\n'
+            f'self: \n{repr(self)}'
+        )
 
     def __iter__(self, with_key=False):
         if with_key:
@@ -2992,6 +3043,7 @@ class KeyZipDataset(Dataset):
             ]
             raise AssertionError(
                 f'Expect that all input_datasets have the same keys. '
+                f'Missing: {lengths} of {len(keys)}\n'
                 f'Missing keys: '
                 f'{missing_keys}\n{self.input_datasets}'
             )
@@ -3086,8 +3138,8 @@ class ItemsDataset(Dataset):
     >>> ds_nokeys_rng = ds_plain.shuffle(True, rng=np.random.RandomState(0))  # No keys
     >>> list(ds_nokeys.map(lambda x: x + 10).items())
     [('a', 11), ('b', 12), ('c', 13)]
-    >>> list(ds_nokeys.concatenate(ds_plain).items())
-    [('a', 1), ('b', 2), ('c', 3), ('a', 1), ('b', 2), ('c', 3)]
+    >>> list(ds_nokeys.map(lambda x: x + 10).concatenate(ds_plain).filter(lambda x: x in [1, 12, 13]).items())
+    [('b', 12), ('c', 13), ('a', 1)]
     >>> list(ds_nokeys_rng.intersperse(ds_nokeys_rng).items())
     [('c', 3), ('a', 1), ('c', 3), ('c', 3), ('b', 2), ('b', 2)]
     >>> list(ds_plain.key_zip(ds_plain).items())
