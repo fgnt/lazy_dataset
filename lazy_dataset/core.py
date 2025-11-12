@@ -239,7 +239,50 @@ def from_path(
     name: str = None,
     parents: Optional[int] = None,
     sep: str = "_",
-):
+) -> "DictDataset":
+    """Create a new DictDataset from a directory path.
+
+    Scan and include all files in `root` that end with a suffix in `suffix`.
+    New examples are created for each unique file stem. The example_id is derived from the file path.
+
+    >>> import tempfile
+    >>> temp_dir = tempfile.TemporaryDirectory()
+    >>> fp = Path(temp_dir.name) / "test1.txt"
+    >>> fp.touch()
+    >>> fp = Path(temp_dir.name) / "test1.wav"
+    >>> fp.touch()
+    >>> ds = from_path(temp_dir.name, suffix=".txt")
+    >>> ds
+      DictDataset(len=1)
+    MapDataset(_pickle.loads)
+    >>> ds[0]  # doctest: +ELLIPSIS
+    {'example_id': 'test1',
+     'txt': PosixPath('.../test1.txt')}
+
+    >>> ds = from_path(temp_dir.name, suffix=[".txt", ".wav"])
+    >>> ds
+      DictDataset(len=1)
+    MapDataset(_pickle.loads)
+    >>> ds[0]  # doctest: +ELLIPSIS
+    {'example_id': 'test1',
+     'txt': PosixPath('.../test1.txt'),
+     'wav': PosixPath('.../test1.wav')}
+
+    Args:
+        root (Union[str, Path]): Root directory to scan for files.
+        suffix (Union[str, List[str]]): List of file suffixes to scan for.
+            Files with these suffixes will be added to the dataset.
+        immutable_warranty (str, optional):
+        name (str, optional):
+        parents (Optional[int], optional): Level of parent folders to include in
+            the example_id. If `None`, only the file stem is used. `parents=1`
+            includes the immediate parent folder. Defaults to None.
+        sep (str, optional): Separator to use for joining folder names.
+            Defaults to "_".
+
+    Returns:
+        DictDataset: A dataset containing the scanned files.
+    """
     from collections import defaultdict
     import os
     # https://stackoverflow.com/a/59803793/16085876
