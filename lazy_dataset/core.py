@@ -250,7 +250,6 @@ def from_path(
             if f.is_dir():
                 subfolders.append(f.path)
             if f.is_file():
-                # if os.path.splitext(f.name)[1].lower() in ext:
                 if any(e in f.name.lower() for e in ext):
                     files.append(Path(f.path))
 
@@ -274,8 +273,8 @@ def from_path(
     examples = defaultdict(dict)
     for file in files:
         example_id = _make_example_id(file)
+        examples[example_id]["example_id"] = example_id
         examples[example_id][file.suffix.lstrip(".")] = file
-    # examples = {_make_example_id(file): {"file_path": file} for file in files}
     return from_dict(examples, immutable_warranty, name)
 
 
