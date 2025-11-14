@@ -12,7 +12,7 @@ import time
 import datetime
 
 import numpy as np
-from typing import Optional, Union, Any, List, Dict
+from typing import Optional, Union, Any, List, Dict, Callable
 
 LOG = logging.getLogger('lazy_dataset')
 
@@ -230,6 +230,97 @@ def from_dataset(
             # Duplicates in keys
             return from_list(list(map(operator.itemgetter(1), items)),
                              immutable_warranty=immutable_warranty, name=name)
+
+
+def from_path(
+    root: Union[str, Path],
+    suffix: Union[str, List[str]],
+    immutable_warranty: str = 'pickle',
+    name: str = None,
+    parents: Optional[Union[Callable, int]] = None,
+    sep: str = "_",
+) -> "DictDataset":
+    """Create a new DictDataset from a directory path.
+
+    Scan and include all files in `root` that end with a suffix in `suffix`.
+    New examples are created for each unique file stem. The example_id is
+    derived from the file path.
+
+    >>> import tempfile
+    >>> temp_dir = tempfile.TemporaryDirectory()
+    >>> fp = Path(temp_dir.name) / "test1.txt"
+    >>> fp.touch()
+    >>> fp = Path(temp_dir.name) / "test1.wav"
+    >>> fp.touch()
+    >>> ds = from_path(temp_dir.name, suffix=".txt")
+    >>> ds
+      DictDataset(len=1)
+    MapDataset(_pickle.loads)
+    >>> ds[0]  # doctest: +ELLIPSIS
+    {'example_id': 'test1', 'txt': PosixPath('.../test1.txt')}
+
+    >>> ds = from_path(temp_dir.name, suffix=[".txt", ".wav"])
+    >>> ds
+      DictDataset(len=1)
+    MapDataset(_pickle.loads)
+    >>> ds[0]  # doctest: +ELLIPSIS
+    {'example_id': 'test1', 'txt': PosixPath('.../test1.txt'), 'wav': PosixPath('.../test1.wav')}
+
+    Args:
+        root (Union[str, Path]): Root directory to scan for files.
+        suffix (Union[str, List[str]]): List of file suffixes to scan for.
+            Files with these suffixes will be added to the dataset.
+        immutable_warranty (str, optional):
+        name (str, optional):
+        parents (Union[Callable, int], optional): Defines how to create example
+            IDs.
+            * `None`: Only the file stem is used.
+            * `int`: Level of parent folders to include in the example ID.
+                `parents=0` includes the immediate parent folder. Only includes
+                folders up to `root`.
+            * `Callable`: A function that takes the relative file path to `root`
+                as input and returns a string. This allows to create custom
+                example IDs.
+
+            Defaults to `None`.
+        sep (str, optional): Separator to use for joining folder names.
+            Defaults to "_". Only used if `parents` is an `int`.
+
+    Returns:
+        DictDataset: A dataset containing the scanned files.
+    """
+    from collections import defaultdict
+    import os
+    # Adapted from https://stackoverflow.com/a/59803793/16085876
+    def _run_fast_scandir(root: os.PathLike, ext: List[str]):
+        for f in os.scandir(root):
+            if f.is_dir():
+                yield from _run_fast_scandir(f.path, ext)
+            if f.is_file():
+                if any(f.name.endswith(e) for e in ext):
+                    yield Path(f.path)
+
+    def _make_example_id(file_path: Path):
+        if parents is None:
+            return file_path.stem
+        if callable(parents):
+            return parents(file_path)
+        example_id = file_path.stem
+        prefix = sep.join(file_path.parent.parts[-(1+parents):])
+        if len(prefix) > 0:
+            return sep.join((prefix, example_id))
+        return example_id
+
+    if isinstance(suffix, str):
+        suffix = [suffix]
+    files = _run_fast_scandir(Path(root), suffix)
+    files = map(Path, files)
+    examples = defaultdict(dict)
+    for file in sorted(files):
+        example_id = _make_example_id(file.relative_to(root))
+        examples[example_id]["example_id"] = example_id
+        examples[example_id][file.suffix.lstrip(".")] = file
+    return from_dict(examples, immutable_warranty, name)
 
 
 def concatenate(*datasets):
