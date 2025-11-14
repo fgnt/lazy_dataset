@@ -304,7 +304,7 @@ def from_path(
     files = _run_fast_scandir(Path(root), suffix)
     files = map(Path, files)
     examples = defaultdict(dict)
-    for file in files:
+    for file in sorted(files):
         example_id = _make_example_id(file)
         examples[example_id]["example_id"] = example_id
         examples[example_id][file.suffix.lstrip(".")] = file
