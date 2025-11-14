@@ -283,22 +283,14 @@ def from_path(
     """
     from collections import defaultdict
     import os
-    # https://stackoverflow.com/a/59803793/16085876
-    def _run_fast_scandir(root: Path, ext: List[str]):
-        subfolders, files = [], []
-
+    # Adapted from https://stackoverflow.com/a/59803793/16085876
+    def _run_fast_scandir(root: os.PathLike, ext: List[str]):
         for f in os.scandir(root):
             if f.is_dir():
-                subfolders.append(f.path)
+                yield from _run_fast_scandir(f.path, ext)
             if f.is_file():
-                if any(e in f.name.lower() for e in ext):
-                    files.append(Path(f.path))
-
-        for folder in list(subfolders):
-            sf, f = _run_fast_scandir(folder, ext)
-            subfolders.extend(sf)
-            files.extend(f)
-        return subfolders, files
+                if any(f.name.endswith(e) for e in ext):
+                    yield Path(f.path)
 
     def _make_example_id(file_path: Path):
         if parents is None:
@@ -309,7 +301,7 @@ def from_path(
 
     if isinstance(suffix, str):
         suffix = [suffix]
-    _, files = _run_fast_scandir(Path(root), suffix)
+    files = _run_fast_scandir(Path(root), suffix)
     files = map(Path, files)
     examples = defaultdict(dict)
     for file in files:
