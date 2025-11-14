@@ -317,7 +317,7 @@ def from_path(
     files = map(Path, files)
     examples = defaultdict(dict)
     for file in sorted(files):
-        example_id = _make_example_id(file)
+        example_id = _make_example_id(file.relative_to(root))
         examples[example_id]["example_id"] = example_id
         examples[example_id][file.suffix.lstrip(".")] = file
     return from_dict(examples, immutable_warranty, name)
