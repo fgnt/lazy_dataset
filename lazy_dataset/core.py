@@ -12,7 +12,7 @@ import time
 import datetime
 
 import numpy as np
-from typing import Optional, Union, Any, List, Dict
+from typing import Optional, Union, Any, List, Dict, Callable
 
 LOG = logging.getLogger('lazy_dataset')
 
@@ -237,7 +237,7 @@ def from_path(
     suffix: Union[str, List[str]],
     immutable_warranty: str = 'pickle',
     name: str = None,
-    parents: Optional[int] = None,
+    parents: Optional[Union[Callable, int]] = None,
     sep: str = "_",
 ) -> "DictDataset":
     """Create a new DictDataset from a directory path.
@@ -272,11 +272,19 @@ def from_path(
             Files with these suffixes will be added to the dataset.
         immutable_warranty (str, optional):
         name (str, optional):
-        parents (Optional[int], optional): Level of parent folders to include in
-            the example_id. If `None`, only the file stem is used. `parents=1`
-            includes the immediate parent folder. Defaults to None.
+        parents (Union[Callable, int], optional): Defines how to create example
+            IDs.
+            * `None`: Only the file stem is used.
+            * `int`: Level of parent folders to include in the example ID.
+                `parents=0` includes the immediate parent folder. Only includes
+                folders up to `root`.
+            * `Callable`: A function that takes the relative file path to `root`
+                as input and returns a string. This allows to create custom
+                example IDs.
+
+            Defaults to `None`.
         sep (str, optional): Separator to use for joining folder names.
-            Defaults to "_".
+            Defaults to "_". Only used if `parents` is an `int`.
 
     Returns:
         DictDataset: A dataset containing the scanned files.
@@ -295,9 +303,13 @@ def from_path(
     def _make_example_id(file_path: Path):
         if parents is None:
             return file_path.stem
+        if callable(parents):
+            return parents(file_path)
         example_id = file_path.stem
-        prefix = sep.join(file_path.parts[-(2+parents):-1])
-        return sep.join((prefix, example_id))
+        prefix = sep.join(file_path.parent.parts[-(1+parents):])
+        if len(prefix) > 0:
+            return sep.join((prefix, example_id))
+        return example_id
 
     if isinstance(suffix, str):
         suffix = [suffix]
