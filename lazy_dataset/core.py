@@ -386,6 +386,13 @@ def from_path(
             file.relative_to(root), parents=parents, sep=sep
         )
         examples[example_id]["example_id"] = example_id
+        if key in examples[example_id]:
+            raise AssertionError(
+                f"Duplicate key '{key}' for example_id '{example_id}' found!\n"
+                f"File: {file}, existing: {examples[example_id][key]}\n"
+                "Consider changing the 'parents' argument to create unique "
+                "keys for the same example ID."
+            )
         examples[example_id][key] = file
     return from_dict(examples, immutable_warranty, name)
 
