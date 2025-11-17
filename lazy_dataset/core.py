@@ -12,7 +12,7 @@ import time
 import datetime
 
 import numpy as np
-from typing import Optional, Union, Any, List, Dict, Callable
+from typing import Optional, Union, Any, List, Dict, Callable, Tuple
 
 LOG = logging.getLogger('lazy_dataset')
 
@@ -232,18 +232,85 @@ def from_dataset(
                              immutable_warranty=immutable_warranty, name=name)
 
 
+def _make_example_id(
+    file_path: Path, parents: Union[int, Callable], sep: str = "/",
+) -> Tuple[str, str]:
+    """Create example IDs from file paths.
+
+    See `from_path` for usage.
+
+    parents:
+        * 0: '{example_id}.{key}', all folders are considered as part of example
+            ID.
+        * > 0: '{example_id}/{key}', abs(parents) is the number of folders to
+            consider as part of example ID.
+        * < 0: '{key}/{example_id}', abs(parents) is the number of path parts to
+            consider as part of example ID.
+
+    >>> def test(parents, paths):
+    ...     for p in paths:
+    ...         example_id, key = _make_example_id(p, parents)
+    ...         print(f'ex[{example_id!r}][{key!r}] = root / {str(p)!r}')
+
+    # Assuming all files are in the 'root' directory
+    # and the naming is '{example_id}.{key}', where key is the file extension.
+    >>> test(0, [Path('ex1.wav'), Path('ex1.txt'), Path('ex2.wav'), Path('ex2.txt')])
+    ex['ex1']['wav'] = root / 'ex1.wav'
+    ex['ex1']['txt'] = root / 'ex1.txt'
+    ex['ex2']['wav'] = root / 'ex2.wav'
+    ex['ex2']['txt'] = root / 'ex2.txt'
+
+    # Assuming an folder per example, i.e., '{example_id}/{key}',
+    # where key is the file name with extension.
+    >>> test(1, [Path('ex1/audio/1.wav'), Path('ex1/audio/2.txt'), Path('ex1/meta.json')])
+    ex['ex1']['audio/1.wav'] = root / 'ex1/audio/1.wav'
+    ex['ex1']['audio/2.txt'] = root / 'ex1/audio/2.txt'
+    ex['ex1']['meta.json'] = root / 'ex1/meta.json'
+
+    # Assuming file stem is example ID, i.e., '{key}/{example_id}.{ext}',
+    # where key is the path up to the specified parent folder (-1: parent
+    # folder, -2: grandparent folder, ...).
+    >>> test(-1, [Path('audio/ex1.wav'), Path('meta/txt/ex1.txt')])
+    ex['ex1']['audio'] = root / 'audio/ex1.wav'
+    ex['ex1']['meta/txt'] = root / 'meta/txt/ex1.txt'
+
+    """
+    if callable(parents):
+        return parents(file_path, sep)
+
+    if parents == 0:
+        return (
+            sep.join(file_path.with_suffix("").parts[parents:]),
+            file_path.suffix.lstrip('.')
+        )
+    if parents > 0:
+        return (
+            sep.join(file_path.with_suffix("").parts[:parents]),
+            sep.join(file_path.parts[parents:])
+        )
+    if parents < 0:
+        return (
+            sep.join(file_path.with_suffix("").parts[parents:]),
+            sep.join(file_path.parts[:parents])
+        )
+
+    raise ValueError(
+        f"parents must be either int or Callable, but got {type(parents)}"
+    )
+
+
 def from_path(
     root: Union[str, Path],
     suffix: Union[str, List[str]],
     immutable_warranty: str = 'pickle',
     name: str = None,
-    parents: Optional[Union[Callable, int]] = None,
-    sep: str = "_",
+    parents: Union[Callable, int] = 0,
+    sep: str = "/",
 ) -> "DictDataset":
     """Create a new DictDataset from a directory path.
 
     Scan and include all files in `root` that end with a suffix in `suffix`.
-    New examples are created for each unique file stem. The example_id is
+    New examples are created for each unique file stem. The example ID is
     derived from the file path.
 
     >>> import tempfile
@@ -272,19 +339,28 @@ def from_path(
             Files with these suffixes will be added to the dataset.
         immutable_warranty (str, optional):
         name (str, optional):
-        parents (Union[Callable, int], optional): Defines how to create example
-            IDs.
-            * `None`: Only the file stem is used.
+        parents (Union[Callable, int], optional): Defines how to create
+            examples. Options are:
             * `int`: Level of parent folders to include in the example ID.
-                `parents=0` includes the immediate parent folder. Only includes
-                folders up to `root`.
+                * 0: Assumes a flat folder structure. The file stem is the
+                    example ID and the suffix is the key to access the file
+                    path in the dataset.
+                * > 0: Assumes a folder per example. Example ID is the folder
+                    and the file name (with extension) is the key to access the
+                    file path in the dataset.
+                * < 0: Assumes that files belonging to the same example are
+                    stored in disjoint folders. File stem is the example ID
+                    and the folder is the key to access the file path in the
+                    dataset.
             * `Callable`: A function that takes the relative file path to `root`
-                as input and returns a string. This allows to create custom
-                example IDs.
+                and the seperator argument `sep` as inputs and returns an
+                example ID and key to access the file path in the dataset. This
+                allows to create custom example IDs.
 
-            Defaults to `None`.
+            Defaults to 0. If non-unique keys under the same example ID are
+            created, an AssertionError is raised.
         sep (str, optional): Separator to use for joining folder names.
-            Defaults to "_". Only used if `parents` is an `int`.
+            Defaults to "/".
 
     Returns:
         DictDataset: A dataset containing the scanned files.
@@ -300,26 +376,17 @@ def from_path(
                 if any(f.name.endswith(e) for e in ext):
                     yield Path(f.path)
 
-    def _make_example_id(file_path: Path):
-        if parents is None:
-            return file_path.stem
-        if callable(parents):
-            return parents(file_path)
-        example_id = file_path.stem
-        prefix = sep.join(file_path.parent.parts[-(1+parents):])
-        if len(prefix) > 0:
-            return sep.join((prefix, example_id))
-        return example_id
-
     if isinstance(suffix, str):
         suffix = [suffix]
     files = _run_fast_scandir(Path(root), suffix)
     files = map(Path, files)
     examples = defaultdict(dict)
     for file in sorted(files):
-        example_id = _make_example_id(file.relative_to(root))
+        example_id, key = _make_example_id(
+            file.relative_to(root), parents=parents, sep=sep
+        )
         examples[example_id]["example_id"] = example_id
-        examples[example_id][file.suffix.lstrip(".")] = file
+        examples[example_id][key] = file
     return from_dict(examples, immutable_warranty, name)
 
 
