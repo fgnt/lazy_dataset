@@ -313,6 +313,12 @@ def from_path(
     New examples are created for each unique file stem. The example ID is
     derived from the file path.
 
+    Note:
+        This function is not intended for frequently-used large datasets, since
+        the file indexing overhead can get significant (instead, see
+        `from_file` or `lazy_dataset.database.JsonDatabase`). For one-time
+        small datasets, it is a convenient way to load them.
+
     >>> import tempfile
     >>> temp_dir = tempfile.TemporaryDirectory()
     >>> fp = Path(temp_dir.name) / "test1.txt"
