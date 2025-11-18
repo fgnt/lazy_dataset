@@ -339,6 +339,25 @@ def from_path(
     >>> ds[0]  # doctest: +ELLIPSIS
     {'example_id': 'test1', 'txt': PosixPath('.../test1.txt'), 'wav': PosixPath('.../test1.wav')}
 
+    # If keys are colliding, an AssertionError is raised
+    >>> (Path(temp_dir.name) / "collision").mkdir(); (Path(temp_dir.name) / "collision" / "test1.txt").touch()
+    >>> from_path(temp_dir.name, suffix=".txt", parents=lambda fp, sep: (fp.stem, fp.suffix.lstrip('.')))  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    AssertionError: Duplicate key 'txt' for example_id 'test1' found!
+    File: .../test1.txt, existing: .../collision/test1.txt
+    Consider changing the 'parents' argument to create unique keys for the same example ID.
+
+    # Change the parents argument to avoid key collisions
+    >>> ds = from_path(temp_dir.name, suffix=".txt", parents=0)
+    >>> ds
+      DictDataset(len=2)
+    MapDataset(_pickle.loads)
+    >>> ds[0]  # doctest: +ELLIPSIS
+    {'example_id': 'collision/test1', 'txt': PosixPath('.../collision/test1.txt')}
+    >>> ds[1]  # doctest: +ELLIPSIS
+    {'example_id': 'test1', 'txt': PosixPath('.../test1.txt')}
+
     Args:
         root (Union[str, Path]): Root directory to scan for files.
         suffix (Union[str, List[str]]): List of file suffixes to scan for.
