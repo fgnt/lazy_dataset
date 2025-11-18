@@ -418,6 +418,12 @@ def from_path(
                 "Consider changing the 'parents' argument to create unique "
                 "keys for the same example ID."
             )
+        if len(key) == 0:
+            LOG.warning(
+                "key has zero length! Check your directory structure!\n"
+                "file: %s, relative file path: %s, parents=%r",
+                file, file.relative_to(root), parents,
+            )
         examples[example_id][key] = file
     return from_dict(examples, immutable_warranty, name)
 
