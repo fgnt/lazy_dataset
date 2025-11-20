@@ -237,7 +237,7 @@ def _make_example_id(
 ) -> Tuple[str, str]:
     """Create example IDs from file paths.
 
-    See `from_path` for usage.
+    See `from_dir` for usage.
 
     parents:
         * 0: '{example_id}.{key}', all folders are considered as part of example
@@ -325,14 +325,14 @@ def from_dir(
     >>> fp.touch()
     >>> fp = Path(temp_dir.name) / "test1.wav"
     >>> fp.touch()
-    >>> ds = from_path(temp_dir.name, suffix=".txt")
+    >>> ds = from_dir(temp_dir.name, suffix=".txt")
     >>> ds
       DictDataset(len=1)
     MapDataset(_pickle.loads)
     >>> ds[0]  # doctest: +ELLIPSIS
     {'example_id': 'test1', 'txt': PosixPath('.../test1.txt')}
 
-    >>> ds = from_path(temp_dir.name, suffix=[".txt", ".wav"])
+    >>> ds = from_dir(temp_dir.name, suffix=[".txt", ".wav"])
     >>> ds
       DictDataset(len=1)
     MapDataset(_pickle.loads)
@@ -341,7 +341,7 @@ def from_dir(
 
     # If keys are colliding, an AssertionError is raised
     >>> (Path(temp_dir.name) / "collision").mkdir(); (Path(temp_dir.name) / "collision" / "test1.txt").touch()
-    >>> from_path(temp_dir.name, suffix=".txt", parents=lambda fp, sep: (fp.stem, fp.suffix.lstrip('.')))  # doctest: +ELLIPSIS
+    >>> from_dir(temp_dir.name, suffix=".txt", parents=lambda fp, sep: (fp.stem, fp.suffix.lstrip('.')))  # doctest: +ELLIPSIS
     Traceback (most recent call last):
     ...
     AssertionError: Duplicate key 'txt' for example_id 'test1' found!
@@ -349,7 +349,7 @@ def from_dir(
     Consider changing the 'parents' argument to create unique keys for the same example ID.
 
     # Change the parents argument to avoid key collisions
-    >>> ds = from_path(temp_dir.name, suffix=".txt", parents=0)
+    >>> ds = from_dir(temp_dir.name, suffix=".txt", parents=0)
     >>> ds
       DictDataset(len=2)
     MapDataset(_pickle.loads)
