@@ -358,6 +358,8 @@ def from_path(
     >>> ds[1]  # doctest: +ELLIPSIS
     {'example_id': 'test1', 'txt': PosixPath('.../test1.txt')}
 
+    >>> temp_dir.cleanup()  # remove temporary files
+
     Args:
         root (Union[str, Path]): Root directory to scan for files.
         suffix (Union[str, List[str]]): List of file suffixes to scan for.
