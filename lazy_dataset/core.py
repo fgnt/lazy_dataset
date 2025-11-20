@@ -299,7 +299,7 @@ def _make_example_id(
     )
 
 
-def from_path(
+def from_dir(
     root: Union[str, Path],
     suffix: Union[str, List[str]],
     immutable_warranty: str = 'pickle',
