@@ -12,7 +12,7 @@ import time
 import datetime
 
 import numpy as np
-from typing import Optional, Union, Any, List, Dict
+from typing import Optional, Union, Any, List, Dict, Callable, Tuple
 
 LOG = logging.getLogger('lazy_dataset')
 
@@ -230,6 +230,204 @@ def from_dataset(
             # Duplicates in keys
             return from_list(list(map(operator.itemgetter(1), items)),
                              immutable_warranty=immutable_warranty, name=name)
+
+
+def _make_example_id(
+    file_path: Path, parents: Union[int, Callable], sep: str = "/",
+) -> Tuple[str, str]:
+    """Create example IDs from file paths.
+
+    See `from_dir` for usage.
+
+    parents:
+        * 0: '{example_id}.{key}', all folders are considered as part of example
+            ID.
+        * > 0: '{example_id}/{key}', abs(parents) is the number of folders to
+            consider as part of example ID.
+        * < 0: '{key}/{example_id}', abs(parents) is the number of path parts to
+            consider as part of example ID.
+
+    >>> def test(parents, paths):
+    ...     for p in paths:
+    ...         example_id, key = _make_example_id(p, parents)
+    ...         print(f'ex[{example_id!r}][{key!r}] = root / {str(p)!r}')
+
+    # Assuming all files are in the 'root' directory
+    # and the naming is '{example_id}.{key}', where key is the file extension.
+    >>> test(0, [Path('ex1.wav'), Path('ex1.txt'), Path('ex2.wav'), Path('ex2.txt')])
+    ex['ex1']['wav'] = root / 'ex1.wav'
+    ex['ex1']['txt'] = root / 'ex1.txt'
+    ex['ex2']['wav'] = root / 'ex2.wav'
+    ex['ex2']['txt'] = root / 'ex2.txt'
+
+    # Assuming an folder per example, i.e., '{example_id}/{key}',
+    # where key is the file name with extension.
+    >>> test(1, [Path('ex1/audio/1.wav'), Path('ex1/audio/2.txt'), Path('ex1/meta.json')])
+    ex['ex1']['audio/1.wav'] = root / 'ex1/audio/1.wav'
+    ex['ex1']['audio/2.txt'] = root / 'ex1/audio/2.txt'
+    ex['ex1']['meta.json'] = root / 'ex1/meta.json'
+
+    # Assuming file stem is example ID, i.e., '{key}/{example_id}.{ext}',
+    # where key is the path up to the specified parent folder (-1: parent
+    # folder, -2: grandparent folder, ...).
+    >>> test(-1, [Path('audio/ex1.wav'), Path('meta/txt/ex1.txt')])
+    ex['ex1']['audio'] = root / 'audio/ex1.wav'
+    ex['ex1']['meta/txt'] = root / 'meta/txt/ex1.txt'
+
+    """
+    if callable(parents):
+        return parents(file_path, sep)
+
+    if parents == 0:
+        return (
+            sep.join(file_path.with_suffix("").parts[parents:]),
+            file_path.suffix.lstrip('.')
+        )
+    if parents > 0:
+        return (
+            sep.join(file_path.with_suffix("").parts[:parents]),
+            sep.join(file_path.parts[parents:])
+        )
+    if parents < 0:
+        return (
+            sep.join(file_path.with_suffix("").parts[parents:]),
+            sep.join(file_path.parts[:parents])
+        )
+
+    raise ValueError(
+        f"parents must be either int or Callable, but got {type(parents)}"
+    )
+
+
+def from_dir(
+    root: Union[str, Path],
+    suffix: Union[str, List[str]],
+    immutable_warranty: str = 'pickle',
+    name: str = None,
+    parents: Union[Callable, int] = 0,
+    sep: str = "/",
+) -> "DictDataset":
+    """Create a new DictDataset from a directory path.
+
+    Scan and include all files in `root` that end with a suffix in `suffix`.
+    New examples are created for each unique file stem. The example ID is
+    derived from the file path.
+
+    Note:
+        This function is not intended for frequently-used large datasets, since
+        the file indexing overhead can get significant (instead, see
+        `from_file` or `lazy_dataset.database.JsonDatabase`). For one-time
+        small datasets, it is a convenient way to load them.
+
+    >>> import tempfile
+    >>> temp_dir = tempfile.TemporaryDirectory()
+    >>> fp = Path(temp_dir.name) / "test1.txt"
+    >>> fp.touch()
+    >>> fp = Path(temp_dir.name) / "test1.wav"
+    >>> fp.touch()
+    >>> ds = from_dir(temp_dir.name, suffix=".txt")
+    >>> ds
+      DictDataset(len=1)
+    MapDataset(_pickle.loads)
+    >>> ds[0]  # doctest: +ELLIPSIS
+    {'example_id': 'test1', 'txt': PosixPath('.../test1.txt')}
+
+    >>> ds = from_dir(temp_dir.name, suffix=[".txt", ".wav"])
+    >>> ds
+      DictDataset(len=1)
+    MapDataset(_pickle.loads)
+    >>> ds[0]  # doctest: +ELLIPSIS
+    {'example_id': 'test1', 'txt': PosixPath('.../test1.txt'), 'wav': PosixPath('.../test1.wav')}
+
+    # If keys are colliding, an AssertionError is raised
+    >>> (Path(temp_dir.name) / "collision").mkdir(); (Path(temp_dir.name) / "collision" / "test1.txt").touch()
+    >>> from_dir(temp_dir.name, suffix=".txt", parents=lambda fp, sep: (fp.stem, fp.suffix.lstrip('.')))  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    AssertionError: Duplicate key 'txt' for example_id 'test1' found!
+    File: .../test1.txt, existing: .../collision/test1.txt
+    Consider changing the 'parents' argument to create unique keys for the same example ID.
+
+    # Change the parents argument to avoid key collisions
+    >>> ds = from_dir(temp_dir.name, suffix=".txt", parents=0)
+    >>> ds
+      DictDataset(len=2)
+    MapDataset(_pickle.loads)
+    >>> ds[0]  # doctest: +ELLIPSIS
+    {'example_id': 'collision/test1', 'txt': PosixPath('.../collision/test1.txt')}
+    >>> ds[1]  # doctest: +ELLIPSIS
+    {'example_id': 'test1', 'txt': PosixPath('.../test1.txt')}
+
+    >>> temp_dir.cleanup()  # remove temporary files
+
+    Args:
+        root (Union[str, Path]): Root directory to scan for files.
+        suffix (Union[str, List[str]]): List of file suffixes to scan for.
+            Files with these suffixes will be added to the dataset.
+        immutable_warranty (str, optional):
+        name (str, optional):
+        parents (Union[Callable, int], optional): Defines how to create
+            examples. Options are:
+            * `int`: Level of parent folders to include in the example ID.
+                * 0: Assumes a flat folder structure. The file stem is the
+                    example ID and the suffix is the key to access the file
+                    path in the dataset.
+                * > 0: Assumes a folder per example. Example ID is the folder
+                    and the file name (with extension) is the key to access the
+                    file path in the dataset.
+                * < 0: Assumes that files belonging to the same example are
+                    stored in disjoint folders. File stem is the example ID
+                    and the folder is the key to access the file path in the
+                    dataset.
+            * `Callable`: A function that takes the relative file path to `root`
+                and the seperator argument `sep` as inputs and returns an
+                example ID and key to access the file path in the dataset. This
+                allows to create custom example IDs.
+
+            Defaults to 0. If non-unique keys under the same example ID are
+            created, an AssertionError is raised.
+        sep (str, optional): Separator to use for joining folder names.
+            Defaults to "/".
+
+    Returns:
+        DictDataset: A dataset containing the scanned files.
+    """
+    from collections import defaultdict
+    import os
+    # Adapted from https://stackoverflow.com/a/59803793/16085876
+    def _run_fast_scandir(root: os.PathLike, ext: List[str]):
+        for f in os.scandir(root):
+            if f.is_dir():
+                yield from _run_fast_scandir(f.path, ext)
+            if f.is_file():
+                if any(f.name.endswith(e) for e in ext):
+                    yield Path(f.path)
+
+    if isinstance(suffix, str):
+        suffix = [suffix]
+    files = _run_fast_scandir(Path(root), suffix)
+    files = map(Path, files)
+    examples = defaultdict(dict)
+    for file in sorted(files):
+        example_id, key = _make_example_id(
+            file.relative_to(root), parents=parents, sep=sep
+        )
+        examples[example_id]["example_id"] = example_id
+        if key in examples[example_id]:
+            raise AssertionError(
+                f"Duplicate key '{key}' for example_id '{example_id}' found!\n"
+                f"File: {file}, existing: {examples[example_id][key]}\n"
+                "Consider changing the 'parents' argument to create unique "
+                "keys for the same example ID."
+            )
+        if len(key) == 0:
+            LOG.warning(
+                "key has zero length! Check your directory structure!\n"
+                "file: %s, relative file path: %s, parents=%r",
+                file, file.relative_to(root), parents,
+            )
+        examples[example_id][key] = file
+    return from_dict(examples, immutable_warranty, name)
 
 
 def concatenate(*datasets):
